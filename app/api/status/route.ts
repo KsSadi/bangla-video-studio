@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getJob } from "@/lib/jobs";
+import { getJob } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,12 +12,18 @@ export async function GET(req: Request) {
   const from = Math.max(0, Number(q.get("from")) || 0);
   return NextResponse.json({
     id: job.id,
+    name: job.name,
     status: job.status,
     steps: job.steps,
     logs: job.logs.slice(from),
     logCount: job.logs.length,
     srt: job.srt ?? null,
+    subtitlesSource: job.subtitlesSource,
     error: job.error ?? null,
     videoReady: job.videoReady,
+    versions: job.versions,
+    revisions: job.revisions,
+    seo: job.seo ?? null,
+    thumbnail: job.thumbnail,
   });
 }

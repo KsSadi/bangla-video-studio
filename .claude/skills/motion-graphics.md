@@ -96,5 +96,12 @@ secondary: never larger than 40% of frame height in this mode.
 - [ ] Keywords and numbers come verbatim from the SRT; no invented facts or data.
 - [ ] One accent colour; ≤ 3 background fields; five type sizes.
 - [ ] Entrances vary between scenes; nothing moves while it must be read.
-- [ ] `<Captions cues={cues} />` present unless the scene shows the full sentence.
+- [ ] No `<Captions>` (studio-owned); bottom 18% kept clear; every scene has CameraDrift + Parallax layers + spring entrances (remotion-core section 8).
 - [ ] Layout adapts to `portrait`.
+
+## Cinematic motion (applies to every scene)
+
+Follow remotion-core section 8 in full. For explainers: cards, bars and icons arrive on `SPRING.snappy` with 2-4 frame
+stagger, the accent element lands with `SPRING.bouncy` once, the background is a slow `Parallax` gradient/shape
+layer, each scene sits in a `<CameraDrift>` (alternate push-in / pull-out), and scenes hand over with an overlapping
+slide/wipe/zoom-through, never a bare cut. Numbers count up with `interpolate` + `EASE_OUT`.

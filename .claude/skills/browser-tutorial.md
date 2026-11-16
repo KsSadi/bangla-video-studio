@@ -121,4 +121,12 @@ area where the current event is: if the active event is in the bottom-right quad
 - [ ] No hard-coded credentials; no destructive actions the voice did not ask for.
 - [ ] `Video.tsx` uses `<BrowserRecording>` with `events` from props and handles missing `recordingSrc`.
 - [ ] Overlays are positioned from `events` percentages, not guessed pixels.
-- [ ] `<Captions cues={cues} />` present; PiP presenter does not hide the action.
+- [ ] No `<Captions>` (studio-owned); PiP presenter does not hide the action; the recording gets a gentle CameraDrift/spring entrance and never sits perfectly static (remotion-core section 8).
+
+## Cinematic motion (applies to the whole video)
+
+Follow remotion-core section 8. The browser frame springs in (`SPRING.soft`) instead of appearing, sits on a
+`<Parallax depth={0.3}>` layer over a drifting gradient, and the whole composition has a very gentle
+`<CameraDrift push={0.03}>` on top of the kit's own click-zoom. Highlight callouts and labels spring in
+(`SPRING.snappy`), and the presenter PiP slides in with a spring. When the viewer must read UI text, keep the
+camera still for that moment.

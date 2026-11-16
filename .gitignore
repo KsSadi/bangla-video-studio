@@ -1,6 +1,8 @@
 node_modules/
 .next/
 jobs/
+projects/
+data/
 _reference_skills/
 next-env.d.ts
 *.tsbuildinfo

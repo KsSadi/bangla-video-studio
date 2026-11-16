@@ -68,7 +68,7 @@ Build each location as a layered SVG/div scene with parallax depth:
 
 ## 5. Text on screen
 
-- Always show `<Captions cues={cues} />` (story audiences read along).
+- Captions are drawn by the studio overlay (kinetic/classic/none per the user's toggle): never draw them yourself and never use `<Captions>`. Keep the bottom 18% clear.
 - Optional: a title card for the first 1.5-2.5 s (story name from the first cue, `KineticText`) and a moral/closing
   card over the last cue. Speech bubbles are optional; if used, put only the quoted words in them.
 
@@ -80,3 +80,11 @@ Build each location as a layered SVG/div scene with parallax depth:
 - [ ] Every background has at least two moving ambient elements.
 - [ ] `character === "none"` path renders no people. `"auto"` passes a custom `look`.
 - [ ] Layout checked for both 16:9 and 9:16.
+
+## Cinematic motion (applies to every scene)
+
+Follow remotion-core section 8 in full. For cartoons specifically: characters and props enter with
+`SPRING.bouncy`/`SPRING.snappy`, backgrounds are 3 depth layers (sky/hills, midground set, foreground leaves or
+grass) in `<Parallax>` with a per-scene `<CameraDrift>` push on the speaker, and scene changes slide or wipe in the
+direction the story moves. A character is never frozen: keep the idle breathing and add a small anticipation
+(squash then spring) before a big gesture.

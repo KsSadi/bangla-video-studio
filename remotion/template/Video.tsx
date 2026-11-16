@@ -6,10 +6,10 @@
  */
 import React from "react";
 import { AbsoluteFill, useVideoConfig } from "remotion";
-import { BrowserRecording, Captions, GradientBackground, KineticText, Presenter, VoiceAudio, activeCueIndex, fadeInOut, useTime } from "../lib/kit";
+import { BrowserRecording, GradientBackground, KineticText, Presenter, VoiceAudio, activeCueIndex, fadeInOut, useTime } from "../lib/kit";
 import type { VideoProps } from "../lib/types";
 
-export const GeneratedVideo: React.FC<VideoProps> = ({ audioSrc, cues, character, recordingSrc, events }) => {
+export const GeneratedVideo: React.FC<VideoProps> = ({ audioSrc, cues, character, recordingSrc, events, captionStyle }) => {
   const t = useTime();
   const { width, height } = useVideoConfig();
   const portrait = height > width;
@@ -27,11 +27,10 @@ export const GeneratedVideo: React.FC<VideoProps> = ({ audioSrc, cues, character
             <BrowserRecording src={recordingSrc} events={events} />
           </div>
           <Presenter character={character} cues={cues} size={height * (portrait ? 0.3 : 0.34)} style={{ position: "absolute", right: width * 0.02, bottom: 0 }} />
-          <Captions cues={cues} bottom={height * 0.03} />
         </>
       ) : (
         <>
-          {cue && (
+          {cue && (!captionStyle || captionStyle === "none") && (
             <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", padding: width * 0.08, paddingBottom: character === "none" ? undefined : height * 0.4, opacity: fadeInOut(t, cue.start, cue.end, 0.2) }}>
               <KineticText
                 key={i}
@@ -42,7 +41,7 @@ export const GeneratedVideo: React.FC<VideoProps> = ({ audioSrc, cues, character
               />
             </AbsoluteFill>
           )}
-          <Presenter character={character} cues={cues} size={height * (portrait ? 0.36 : 0.5)} style={{ position: "absolute", left: "50%", translate: "-50% 0", bottom: 0 }} />
+          <Presenter character={character} cues={cues} size={height * (portrait ? 0.36 : 0.5)} style={{ position: "absolute", left: "50%", translate: "-50% 0", bottom: height * 0.12 }} />
         </>
       )}
     </AbsoluteFill>

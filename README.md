@@ -10,7 +10,7 @@ machine, spawned in headless mode (`claude -p`). Speech-to-text is local Whisper
 voice.mp3 ─▶ faster-whisper (bn) ─▶ subtitles.srt ─▶ you fix spelling in the UI
           ─▶ claude -p + .claude/skills/<mode>.md ─▶ remotion/generated/Video.tsx (+ Playwright record.mjs)
           ─▶ [tutorial] Playwright records the browser ─▶ ffmpeg ─▶ recording.mp4
-          ─▶ remotion render ─▶ jobs/<id>/final-video.mp4
+          ─▶ remotion render ─▶ projects/<name>/versions/vN.mp4
 ```
 
 ## Requirements
@@ -94,7 +94,7 @@ app/                    Next.js UI (page.tsx) and API routes
   api/generate-video    POST job settings -> starts the pipeline
   api/status            GET job steps, logs, subtitles
   api/video             GET final MP4 (stream / download)
-lib/jobs.ts             Pipeline: spawns python, claude, node, ffmpeg, remotion
+lib/pipeline.ts         Pipeline: spawns python, claude, node, ffmpeg, remotion (lib/store.ts = projects, lib/media.ts = FFmpeg audio)
 .claude/skills/         Skills Claude reads per mode
   remotion-core.md      Shared rules: timing, animation, Bengali typography
   cartoon-story.md      2D characters, lip-sync, backgrounds
@@ -110,7 +110,7 @@ scripts/
   recorder.mjs          Playwright recording helper (cursor, click log, sync)
   inspect-page.mjs      Dumps page elements so Claude writes real selectors
   setup.mjs             One-time setup
-jobs/<id>/              Per-job files: audio, subtitles.srt, Video.tsx, final-video.mp4
+projects/<name>/         Auto-saved project: audio, subtitles.srt, project.json (settings, revisions), Video.tsx, versions/v1.mp4…, thumbnail.png, metadata.json
 _reference_skills/      Open-source skills the studio's skills were built from (not needed at runtime)
 ```
 
@@ -121,7 +121,7 @@ Edit the files in `.claude/skills/` to change the style of every future video.
 ## Good to know
 
 - **One job at a time.** The generated composition is a single file; a second job is refused while one runs.
-- **Jobs are kept in memory.** Restarting the dev server forgets the job list (files stay in `jobs/`).
+- **Jobs are kept in memory.** Restarting the dev server forgets the job list (files stay in `projects/`; reopen them from Recent Projects).
 - **Tutorial mode runs generated code.** Claude writes a Playwright script that is executed on your machine
   against the URL you entered. Login email/password are passed to that script as environment variables only;
   they are not written to disk and not sent to Claude. Use a test account for sites that matter.
@@ -140,3 +140,21 @@ Skills were synthesized from these open-source projects (cloned to `_reference_s
 [athola/claude-night-market](https://github.com/athola/claude-night-market).
 Fonts: Hind Siliguri and Noto Sans Bengali (SIL Open Font License). Remotion has its own
 [license](https://www.remotion.dev/license) (free for individuals and small teams).
+
+
+## Studio features (every one is optional, with its own ON/OFF control; OFF = the backend step is skipped)
+
+| Feature | Where | Notes |
+| --- | --- | --- |
+| Manual `.srt` upload | Step 1 | Skips Whisper; "Re-generate with Whisper" stays available |
+| Enhance Voice Audio | Step 1 | FFmpeg `highpass=80, lowpass=12000, afftdn, loudnorm`; OFF = raw audio |
+| Sync spot-check | Step 1 editor | Random 3-4 slice playback with live line highlight, click-to-play rows, editable start/end, Verified / Skip, save `subtitles.srt`, optional "require verification" gate |
+| Extra media / B-roll | Step 2 panel | Files go to `projects/<name>/public/assets/`; Claude places them with `<MediaFrame>` |
+| Captions | Step 4 | Kinetic / Classic / None, drawn by the studio overlay (Hind Siliguri / Noto Sans Bengali) |
+| BGM + SFX | Step 4 | Synthesized locally with FFmpeg (no downloads), auto-ducked under the voice |
+| Brand kit, watermark, outro | Step 4 | Brand kit is saved in `data/brand/` and shared by all projects |
+| Draft vs Final | Step 5 | Fast Draft 480p/15fps, Final HD 1080p/30fps; "Reuse current design" re-renders without calling Claude |
+| Revise video | Step 6 | Chat-to-edit (Bengali/English) edits only the requested parts; every render is a version (`v1.mp4`, `v2.mp4`…) with a switcher and compare |
+| Thumbnail + YouTube pack | Step 5 | Run on Final HD renders; chapters are computed from the SRT, never by the model |
+
+Offline Remotion: set `REMOTION_BROWSER_EXECUTABLE` to a Chrome/Chromium path to skip Remotion's browser download.
