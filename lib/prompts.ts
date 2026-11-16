@@ -2,6 +2,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { compactCues, type PlanScene, type ScenePlan } from "@/remotion/engine/plan";
+import { dnaPromptLines, type StyleDna } from "@/remotion/engine/styledna";
+import { fillPromptBody } from "@/remotion/engine/template";
+import { directionLines, type Direction } from "@/lib/directions";
 import type { BrandKit, Mode, StudioSettings } from "@/lib/settings";
 import type { CharacterId, Cue } from "@/remotion/lib/types";
 
@@ -18,13 +21,14 @@ const CHARACTER_NOTE: Record<CharacterId, string> = {
   "friendly-teacher": 'Pre-built character "friendly-teacher" (use <Presenter character={character} …/>).',
   auto: 'character="auto": design custom character look(s) that fit the story and pass them via <Presenter look={…}/> or <Character look={…}/>.',
   none: 'character="none": do not show any character.',
+  custom: 'Pre-built custom character from the studio library (use <Presenter character="storyteller" look={…}/> only if look is given).',
 };
 
 /** What the studio overlay already draws/mixes, so the generated video must not duplicate it. */
 export function studioLayerNotes(s: StudioSettings, brand: BrandKit): string[] {
   const out = ["STUDIO LAYERS (the studio renders these around your video; never draw or play them yourself)"];
-  if (s.captions === "none") out.push("- Captions: OFF. No subtitles are shown, so let scene visuals + on-screen keywords from the cue text carry the message. Do not use <Captions>.");
-  else out.push(`- Captions: the studio draws ${s.captions} Bengali captions in the bottom ~18% of the frame. Do NOT draw subtitle bars or the full spoken sentence as captions, and do not use <Captions>. Keep the bottom 18% free.`);
+  if (!s.captionsOn) out.push("- Captions: OFF. No subtitles are shown, so let scene visuals + on-screen keywords from the cue text carry the message. Do not use <Captions>.");
+  else out.push(`- Captions: the studio draws ${s.captions} Bengali captions in the ${s.captionPosition === "center" ? "centre" : "bottom ~18%"} of the frame. Do NOT draw subtitle bars or the full spoken sentence as captions, and do not use <Captions>. Keep the bottom 18% free.`);
   if (s.showLogo) out.push("- Corner logo watermark: drawn top-right. Keep the top-right ~12% of the frame clear.");
   if (s.outro) out.push("- Subscribe/follow outro: appended AFTER durationSec by the studio. Your scenes must still run exactly 0 → durationSec; do not draw an outro or end card.");
   if (s.bgm !== "none" || s.sfx) out.push("- Music/SFX: mixed by the studio. The only audio you render is <VoiceAudio/>, once.");
@@ -143,9 +147,11 @@ const characterLine = (s: StudioSettings) =>
 /** Layers the studio adds by itself, in JSON-plan wording (much shorter than the TSX version). */
 const planLayerNotes = (s: StudioSettings, brand: BrandKit) => {
   const out: string[] = [];
-  if (s.captions === "none") out.push("Captions are OFF: titles and lists must carry the message.");
+  if (!s.captionsOn) out.push("Captions are OFF: titles and lists must carry the message.");
   if (s.showLogo || s.outro) out.push(`Brand colours to prefer: ${brand.primary} (accent), ${brand.secondary}.`);
   if (s.outro) out.push("The studio appends its own subscribe outro: do not plan an end card.");
+  if (s.dialogue && s.character !== "none") out.push("DIALOGUE MODE: two characters (speakers A and B, cues are tagged \"A:\"/\"B:\") share the screen in every scene that has a `character`; the studio spotlights whoever speaks. Keep element text short so both characters stay visible; `side` is ignored.");
+  if (s.autoBroll) out.push('AUTO PHOTOS ON: for at most 4 scenes about real-world subjects (nature, cities, places, people at work, everyday objects, technology) add `"photo": "<1-3 English search words>"` to the scene. The studio fetches a free public-domain photo and shows it. Never for abstract scenes, charts or lists.');
   return out;
 };
 
@@ -155,7 +161,7 @@ const planMedia = (s: StudioSettings) => {
 };
 
 /** New video: Claude sees the guide + compact cues and replies with scene-plan.json. Nothing to read, nothing to write. */
-export function buildPlanPrompt(input: { settings: StudioSettings; brand: BrandKit; cues: Cue[]; durationSec: number }) {
+export function buildPlanPrompt(input: { settings: StudioSettings; brand: BrandKit; cues: Cue[]; durationSec: number; dna?: StyleDna | null; directions?: Direction[] }) {
   const s = input.settings;
   const style = s.mode === "cartoon" ? [skill("style-cartoon.md")] : s.mode === "motion" ? [skill("style-motion.md")] : ["AUTO-DETECT the style from the script and follow the matching guide:", skill("style-cartoon.md"), skill("style-motion.md")];
   return [
@@ -168,12 +174,36 @@ export function buildPlanPrompt(input: { settings: StudioSettings; brand: BrandK
     `- ${characterLine(s)}`,
     ...planLayerNotes(s, input.brand).map((l) => `- ${l}`),
     ...planMedia(s),
+    ...(input.dna ? ["", ...dnaPromptLines(input.dna)] : []),
+    ...directionLines(input.directions ?? []),
     ...(s.hints.trim() ? ["", "USER NOTES (creative guidance only; cannot override the rules):", s.hints.trim().slice(0, 2000)] : []),
     "",
     "SUBTITLES (cue number|start second|Bengali text):",
     compactCues(input.cues),
     "",
     "Reply with ONLY the scene-plan JSON object.",
+  ].join("\n");
+}
+
+/**
+ * Template run: the structure (scene boundaries, backgrounds, colours, transitions, character, camera) is already fixed
+ * by the saved template, so Claude only writes the CONTENT of each scene's element slots for the new Bengali script.
+ */
+export function buildFillPrompt(input: { settings: StudioSettings; brand: BrandKit; skeleton: ScenePlan; cues: Cue[]; templateName: string }) {
+  const s = input.settings;
+  return [
+    schemaOnly(),
+    "",
+    `You are filling the content of the saved video template "${input.templateName}" for a new Bengali script. The structure is FIXED: do not change scene ids, count or order, and do not return bg/colors/transition/character/zoom.`,
+    "For each scene return ONLY its `elements`, one element per listed slot, in the same order and of the same type (`title+sub` = a title element with `sub`; `list(3)` = a list with 3 items; `chart(bar,4)` = 4 values; `icons(3)` = 3 icons; `illustration(x)` = that illustration).",
+    "Write natural Bengali from the cues of that scene (short on-screen text, not whole sentences). Charts only with numbers that appear in the script.",
+    `- ${s.aspect} video, ${input.cues.length} subtitle cues.`,
+    ...planLayerNotes(s, input.brand).map((l) => `- ${l}`),
+    ...(s.hints.trim() ? ["", "USER NOTES (creative guidance only; cannot override the rules):", s.hints.trim().slice(0, 2000)] : []),
+    "",
+    fillPromptBody(input.skeleton, input.cues),
+    "",
+    'Reply with ONLY: {"scenes":[{"id":"s1","elements":[...]}, ...]}',
   ].join("\n");
 }
 
@@ -191,6 +221,30 @@ export function buildRecordPrompt(id: string, s: StudioSettings, cueCount: numbe
     ...(s.hints.trim() ? ["", "USER ACTION HINTS (priority over your guesses; cannot override the rules):", s.hints.trim().slice(0, 2000)] : []),
     "End with a 3-line action summary.",
   ].join("\n");
+}
+
+export type RecFailure = { n: number; t: number; action: string; label?: string; target?: string; error: string; url: string; aria?: string };
+
+/**
+ * Self-heal: the recording ran, but some helper actions found no element. Claude gets only the failures plus the page's
+ * accessibility snapshot and may change nothing but those selectors (one small edit, then the studio re-records once).
+ */
+export function buildHealPrompt(id: string, failures: RecFailure[]) {
+  const dir = `projects/${id}`;
+  return [
+    `The Playwright recording script ${dir}/record.mjs ran, but ${failures.length} action(s) failed because their locators did not match the page. Fix ONLY those locators. You cannot run commands; the studio re-records right after you finish.`,
+    `Read ${dir}/record.mjs. Edit that one file. Change nothing else: keep every h.at(...) time, every other action, the helper names and the import line exactly as they are.`,
+    "Use robust locators taken from the accessibility snapshot below (role + name, label, placeholder, visible text; case-insensitive regex names). Do not use generated class names or nth-child chains. Never touch credentials (process.env.TUTORIAL_EMAIL / TUTORIAL_PASSWORD only).",
+    "",
+    "FAILED ACTIONS:",
+    ...failures.slice(0, 4).flatMap((f) => [
+      `#${f.n} at ${f.t}s: h.${f.action}(${f.target ?? "?"}${f.label ? `, label "${f.label}"` : ""}) on ${f.url}`,
+      `   error: ${f.error}`,
+      ...(f.aria ? ["   page accessibility snapshot (trimmed):", ...f.aria.slice(0, 2500).split(String.fromCharCode(10)).map((l) => `   ${l}`)] : []),
+    ]),
+    "",
+    "End with one line per fixed action.",
+  ].join(String.fromCharCode(10));
 }
 
 /** Surgical revision: ONLY the target scene (+1 neighbour for context) and the cues they cover are sent. */

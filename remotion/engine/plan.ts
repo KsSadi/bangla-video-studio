@@ -37,6 +37,8 @@ export type PlanScene = {
   character?: { emotion: Emotion; side?: "left" | "right" | "center" };
   elements: PlanElement[];
   zoom?: PlanZoom[];
+  /** Optional B-roll: 1-3 English search words. The studio fetches a public-domain/CC0 photo and adds it as a media element. */
+  photo?: string;
 };
 
 export type ScenePlan = {
@@ -117,6 +119,8 @@ export function normalizeScene(raw: unknown, cueCount: number): PlanScene | null
     .filter((z): z is PlanZoom => !!z)
     .slice(0, 6);
   if (zoom.length) scene.zoom = zoom;
+  const photo = str(raw.photo, 40).replace(/[^A-Za-z0-9 ,'-]/g, "").trim();
+  if (photo) scene.photo = photo;
   return scene;
 }
 
@@ -169,11 +173,11 @@ const PALETTES = [
 ];
 
 /** Deterministic fallback plan (no AI): a new scene roughly every 7 s, headline taken from the cue text. */
-export function autoPlan(cues: Cue[], withCharacter = true): ScenePlan {
+export function autoPlan(cues: Cue[], withCharacter = true, sceneSec = 7): ScenePlan {
   const scenes: PlanScene[] = [];
   let last = -99;
   cues.forEach((c, i) => {
-    if (i > 0 && c.start - last < 7) return;
+    if (i > 0 && c.start - last < sceneSec) return;
     last = c.start;
     const n = scenes.length;
     scenes.push({
@@ -247,5 +251,5 @@ export function mergeScenes(plan: ScenePlan, edited: unknown[], cueCount: number
 export const compactCues = (cues: Cue[], from = 1, to = cues.length) =>
   cues
     .slice(from - 1, to)
-    .map((c, i) => `${from + i}|${c.start.toFixed(1)}|${c.text}`)
+    .map((c, i) => `${from + i}|${c.start.toFixed(1)}|${c.speaker ? `${c.speaker}: ` : ""}${c.text}`)
     .join("\n");

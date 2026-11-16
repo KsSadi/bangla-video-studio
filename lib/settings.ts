@@ -5,14 +5,20 @@
 import type { CharacterId } from "@/remotion/lib/types";
 
 export type Mode = "cartoon" | "motion" | "tutorial" | "auto";
-export type CaptionStyle = "kinetic" | "classic" | "none";
+export type { CaptionStyle } from "@/remotion/lib/types";
+import type { CaptionStyle } from "@/remotion/lib/types";
 export type BgmId = "none" | "soft-storytelling" | "tech-explainer";
 export type Quality = "draft" | "final";
 export type Verification = "unchecked" | "verified" | "skipped";
 
 export const MODES: Mode[] = ["cartoon", "motion", "tutorial", "auto"];
-export const CHARACTERS: CharacterId[] = ["tech-mentor", "storyteller", "friendly-teacher", "auto", "none"];
-export const CAPTION_STYLES: CaptionStyle[] = ["kinetic", "classic", "none"];
+export const CHARACTERS: CharacterId[] = ["tech-mentor", "storyteller", "friendly-teacher", "auto", "none", "custom"];
+export const SPEAKER_B_CHARACTERS = ["tech-mentor", "storyteller", "friendly-teacher", "custom"] as const;
+/** Subtitle themes the user can pick (OFF is the master switch `captionsOn`, not a style). */
+export const CAPTION_STYLES: Exclude<CaptionStyle, "none">[] = ["kinetic", "pill", "glow", "classic"];
+export const CAPTION_POSITIONS = ["bottom", "center"] as const;
+/** What the renderer gets: "none" when the master switch is OFF. */
+export const effectiveCaptions = (s: Pick<StudioSettings, "captions" | "captionsOn">): CaptionStyle => (s.captionsOn ? s.captions : "none");
 export const BGM_IDS: BgmId[] = ["none", "soft-storytelling", "tech-explainer"];
 
 /** Fast Draft Preview vs Final HD Render. Draft keeps the aspect ratio but is tiny and 15 fps. */
@@ -38,7 +44,11 @@ export type StudioSettings = {
   assets: AssetItem[];
   mediaNotes: string;
   // 5 captions / audio / brand
-  captions: CaptionStyle;
+  /** Master switch. OFF = a completely clean video (the .srt still times the scenes). */
+  captionsOn: boolean;
+  captions: Exclude<CaptionStyle, "none">;
+  captionSize: number; // 0.6 .. 1.6 (1 = default)
+  captionPosition: (typeof CAPTION_POSITIONS)[number];
   bgm: BgmId;
   bgmVolume: number; // 0..1, relative level before auto-ducking
   sfx: boolean;
@@ -52,6 +62,29 @@ export type StudioSettings = {
   engine: "json" | "custom";
   /** Token Saver (Haiku/Sonnet hybrid) vs Max Quality (your default model for everything). */
   tokenSaver: boolean;
+  // pro-creator features (each independently switchable)
+  /** Instant in-browser Remotion Player preview of the scene plan, before any MP4 render. */
+  livePreview: boolean;
+  /** Show the Long-to-Shorts (9:16) clipper after a video exists. */
+  shorts: boolean;
+  /** Two-speaker Dialogue Mode: two characters, spotlight + lip-sync follow the active speaker. */
+  dialogue: boolean;
+  characterB: (typeof SPEAKER_B_CHARACTERS)[number];
+  /** Character Builder library ids, used when character / characterB is "custom". */
+  customCharacter: string;
+  customCharacterB: string;
+  /** Fetch public-domain/CC0 photos from Wikimedia Commons for scenes that benefit from real-world visuals. */
+  autoBroll: boolean;
+  // reliability
+  /** Tutorial mode: smart fallback locators + one Claude auto-patch of failed selectors before the final recording. */
+  selfHeal: boolean;
+  /** Videos longer than 3 minutes render in 90-second chunks (separate Remotion runs) stitched with ffmpeg. */
+  chunkedRender: boolean;
+  // style + templates
+  /** Style DNA library id (data/styles/): colours, transitions, pacing and caption look of a cloned reference video. */
+  styleDna: string;
+  /** Template library id (data/templates/): reuse the structure of a finished video with a new voice. */
+  template: string;
 };
 
 export const DEFAULT_SETTINGS: StudioSettings = {
@@ -66,7 +99,10 @@ export const DEFAULT_SETTINGS: StudioSettings = {
   verification: "unchecked",
   assets: [],
   mediaNotes: "",
+  captionsOn: true,
   captions: "kinetic",
+  captionSize: 1,
+  captionPosition: "bottom",
   bgm: "none",
   bgmVolume: 0.2,
   sfx: false,
@@ -76,6 +112,17 @@ export const DEFAULT_SETTINGS: StudioSettings = {
   metadata: false,
   engine: "json",
   tokenSaver: true,
+  livePreview: true,
+  shorts: true,
+  dialogue: false,
+  characterB: "friendly-teacher",
+  customCharacter: "",
+  customCharacterB: "",
+  autoBroll: false,
+  selfHeal: true,
+  chunkedRender: true,
+  styleDna: "",
+  template: "",
 };
 
 /** Persistent brand kit (shared by every project). */
@@ -114,7 +161,11 @@ export function sanitizeSettings(raw: unknown, base: StudioSettings = DEFAULT_SE
     verification: pick(r.verification, ["unchecked", "verified", "skipped"] as const, base.verification),
     assets,
     mediaNotes: text(r.mediaNotes, 2000, base.mediaNotes),
+    // legacy projects stored "none" as a style: that now means master switch OFF
+    captionsOn: r.captions === "none" ? false : bool(r.captionsOn, base.captionsOn),
     captions: pick(r.captions, CAPTION_STYLES, base.captions),
+    captionSize: Number.isFinite(Number(r.captionSize)) && r.captionSize !== null && r.captionSize !== "" ? Math.min(1.6, Math.max(0.6, Number(r.captionSize))) : base.captionSize,
+    captionPosition: pick(r.captionPosition, CAPTION_POSITIONS, base.captionPosition),
     bgm: pick(r.bgm, BGM_IDS, base.bgm),
     bgmVolume: Number.isFinite(vol) ? Math.min(1, Math.max(0, vol)) : base.bgmVolume,
     sfx: bool(r.sfx, base.sfx),
@@ -124,6 +175,17 @@ export function sanitizeSettings(raw: unknown, base: StudioSettings = DEFAULT_SE
     metadata: bool(r.metadata, base.metadata),
     engine: r.engine === "custom" ? "custom" : r.engine === "json" ? "json" : base.engine,
     tokenSaver: bool(r.tokenSaver, base.tokenSaver),
+    livePreview: bool(r.livePreview, base.livePreview),
+    shorts: bool(r.shorts, base.shorts),
+    dialogue: bool(r.dialogue, base.dialogue),
+    characterB: pick(r.characterB, SPEAKER_B_CHARACTERS, base.characterB),
+    customCharacter: typeof r.customCharacter === "string" && /^[a-z0-9-]{0,40}$/.test(r.customCharacter) ? r.customCharacter : base.customCharacter,
+    customCharacterB: typeof r.customCharacterB === "string" && /^[a-z0-9-]{0,40}$/.test(r.customCharacterB) ? r.customCharacterB : base.customCharacterB,
+    autoBroll: bool(r.autoBroll, base.autoBroll),
+    selfHeal: bool(r.selfHeal, base.selfHeal),
+    chunkedRender: bool(r.chunkedRender, base.chunkedRender),
+    styleDna: typeof r.styleDna === "string" && /^(style-[a-z0-9]{3,20})?$/.test(r.styleDna) ? r.styleDna : base.styleDna,
+    template: typeof r.template === "string" && /^(tpl-[a-z0-9]{3,24})?$/.test(r.template) ? r.template : base.template,
   };
 }
 
@@ -139,3 +201,36 @@ export type SeoPack = {
   headline: string;
   chapters: ChapterInfo[];
 };
+
+/** A vertical Short cut from the long video (times are seconds on the voiceover clock). */
+export type ShortClip = {
+  id: string;
+  n: number;
+  start: number;
+  end: number;
+  hookTitle: string;
+  source: "ai" | "manual";
+  state: "ready" | "rendering" | "done" | "error";
+  quality?: Quality;
+  size?: number;
+  error?: string;
+  createdAt: string;
+};
+
+/**
+ * Studio presets save the reusable workflow (mode, character, music, captions, brand toggles, engine, feature switches).
+ * Per-video things (notes, URL, login, media, verification) are deliberately not part of a preset.
+ */
+export const PRESET_KEYS = [
+  "mode", "character", "customCharacter", "dialogue", "characterB", "customCharacterB", "aspect",
+  "captionsOn", "captions", "captionSize", "captionPosition", "bgm", "bgmVolume", "sfx", "showLogo", "outro", "enhanceVoice",
+  "thumbnail", "metadata", "engine", "tokenSaver", "livePreview", "shorts", "autoBroll", "selfHeal", "chunkedRender", "styleDna",
+] as const satisfies readonly (keyof StudioSettings)[];
+
+export type StudioPreset = { id: string; name: string; settings: Partial<StudioSettings>; createdAt: string };
+
+/** Keep only the preset keys of validated settings. */
+export function presetFromSettings(raw: unknown, base: StudioSettings = DEFAULT_SETTINGS): Partial<StudioSettings> {
+  const clean = sanitizeSettings(raw, base);
+  return Object.fromEntries(PRESET_KEYS.map((k) => [k, clean[k]])) as Partial<StudioSettings>;
+}

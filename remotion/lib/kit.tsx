@@ -19,7 +19,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { CHARACTER_STYLES, Character, type CharacterStyle, type Expression } from "../characters/Character";
-import type { CaptionStyle, CharacterId, Cue, RecEvent } from "./types";
+import type { CaptionOpts, CaptionStyle, CharacterId, Cue, RecEvent, SafeZone } from "./types";
 
 // ---------- Bengali fonts (local files, never fetched from the network) ----------
 export const FONT_HEADING = "Hind Siliguri";
@@ -145,8 +145,21 @@ export const KineticText: React.FC<{
   );
 };
 
-/** Classic bottom subtitle bar. Safe-area aware; wraps long Bengali lines. */
-const ClassicCaption: React.FC<{ cues: Cue[]; bottom?: number; fontSize?: number; style?: React.CSSProperties }> = ({ cues, bottom, fontSize, style }) => {
+// ---------- studio captions (4 themes) ----------
+type CapProps = { cues: Cue[]; accent: string; accent2: string; safe?: SafeZone; opts?: CaptionOpts };
+
+/** Where the caption block sits: above the bottom margin (default) or vertically centred. */
+const capBox = (width: number, height: number, safe: SafeZone | undefined, opts: CaptionOpts | undefined, side = 0.07): React.CSSProperties => {
+  const left = width * (safe?.left ?? side);
+  const right = width * (safe?.right ?? side);
+  return opts?.position === "center"
+    ? { position: "absolute", left, right, top: 0, bottom: 0, display: "flex", alignItems: "center", justifyContent: "center" }
+    : { position: "absolute", left, right, bottom: height * (safe?.bottom ?? 0.07), display: "flex", justifyContent: "center" };
+};
+const capSize = (width: number, height: number, opts: CaptionOpts | undefined, k = 1) => Math.round(width * (width > height ? 0.036 : 0.062) * k * Math.min(1.8, Math.max(0.5, opts?.size ?? 1)));
+
+/** Minimalist Classic: clean bottom-aligned subtitle bar. */
+const ClassicCaption: React.FC<CapProps> = ({ cues, safe, opts }) => {
   const t = useTime();
   const { width, height } = useVideoConfig();
   const i = activeCueIndex(cues, t);
@@ -154,36 +167,16 @@ const ClassicCaption: React.FC<{ cues: Cue[]; bottom?: number; fontSize?: number
   const c = cues[i];
   const p = enter(t, c.start, 0.18);
   return (
-    <div style={{ position: "absolute", left: width * 0.06, right: width * 0.06, bottom: bottom ?? height * 0.07, display: "flex", justifyContent: "center" }}>
-      <div
-        lang="bn"
-        style={{
-          fontFamily: BENGALI_FONT_STACK,
-          fontWeight: 600,
-          fontSize: fontSize ?? Math.round(width * (width > height ? 0.026 : 0.046)),
-          lineHeight: 1.5,
-          color: "#fff",
-          background: "rgba(8,10,24,0.78)",
-          padding: "0.45em 0.9em",
-          borderRadius: "0.5em",
-          textAlign: "center",
-          opacity: p,
-          translate: `0px ${(1 - p) * 12}px`,
-          ...style,
-        }}
-      >
+    <div style={capBox(width, height, safe, opts, 0.06)}>
+      <div lang="bn" style={{ fontFamily: BENGALI_FONT_STACK, fontWeight: 500, fontSize: capSize(width, height, opts, 0.72), lineHeight: 1.5, color: "#fff", background: "rgba(8,10,24,0.78)", padding: "0.4em 0.9em", borderRadius: "0.4em", textAlign: "center", opacity: p, translate: `0px ${(1 - p) * 10}px` }}>
         {c.text}
       </div>
     </div>
   );
 };
 
-
-/**
- * Kinetic captions: the spoken line pops in word by word (spring), the word being spoken is highlighted.
- * Word timing is linear inside the cue. Words (not letters) keep Bengali conjuncts intact.
- */
-const KineticCaption: React.FC<{ cues: Cue[]; accent: string; bottom?: number }> = ({ cues, accent, bottom }) => {
+/** Viral Word-Pop: the spoken line pops in word by word; the word being spoken scales up in the accent colour. */
+const KineticCaption: React.FC<CapProps> = ({ cues, accent, safe, opts }) => {
   const t = useTime();
   const frame = useCurrentFrame();
   const { width, height, fps } = useVideoConfig();
@@ -193,15 +186,16 @@ const KineticCaption: React.FC<{ cues: Cue[]; accent: string; bottom?: number }>
   const words = splitWords(c.text);
   const span = Math.max(0.1, c.end - c.start);
   const exit = interpolate(t, [c.end - 0.12, c.end], [1, 0], CLAMP);
-  const fontSize = Math.round(width * (width > height ? 0.036 : 0.062));
   const activeWord = Math.min(words.length - 1, Math.floor(((t - c.start) / span) * words.length));
   return (
-    <div style={{ position: "absolute", left: width * 0.07, right: width * 0.07, bottom: bottom ?? height * 0.07, display: "flex", justifyContent: "center", opacity: exit }}>
-      <div lang="bn" style={{ fontFamily: BENGALI_FONT_STACK, fontWeight: 700, fontSize, lineHeight: 1.5, textAlign: "center", color: "#fff", textShadow: "0 3px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.9)" }}>
+    <div style={{ ...capBox(width, height, safe, opts), opacity: exit }}>
+      <div lang="bn" style={{ fontFamily: BENGALI_FONT_STACK, fontWeight: 700, fontSize: capSize(width, height, opts), lineHeight: 1.5, textAlign: "center", color: "#fff", textShadow: "0 3px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.9)" }}>
         {words.map((w, k) => {
           const p = spring({ frame: frame - (c.start + Math.min(k * 0.07, span * 0.4)) * fps, fps, config: { damping: 14, stiffness: 180 }, durationInFrames: 16 });
+          const startOfWord = c.start + (k / words.length) * span;
+          const pop = k === activeWord ? spring({ frame: frame - startOfWord * fps, fps, config: { damping: 9, stiffness: 220 }, durationInFrames: 14 }) : 0;
           return (
-            <span key={k} style={{ display: "inline-block", marginRight: "0.26em", opacity: Math.min(1, p * 1.6), translate: `0px ${(1 - p) * 26}px`, scale: String(0.7 + 0.3 * p), color: k === activeWord ? accent : "#fff" }}>
+            <span key={k} style={{ display: "inline-block", marginRight: "0.26em", opacity: Math.min(1, p * 1.6), translate: `0px ${(1 - p) * 26}px`, scale: String((0.7 + 0.3 * p) * (1 + 0.2 * pop)), color: k === activeWord ? accent : "#fff", textShadow: k === activeWord ? `0 3px 14px rgba(0,0,0,0.85), 0 0 22px ${accent}88` : undefined }}>
               {w}
             </span>
           );
@@ -211,9 +205,108 @@ const KineticCaption: React.FC<{ cues: Cue[]; accent: string; bottom?: number }>
   );
 };
 
-/** Studio-owned captions overlay (Main composition draws it from the UI's caption setting). */
-export const StudioCaptions: React.FC<{ cues: Cue[]; style: CaptionStyle; accent?: string }> = ({ cues, style, accent = "#FBBF24" }) =>
-  style === "kinetic" ? <KineticCaption cues={cues} accent={accent} /> : style === "classic" ? <ClassicCaption cues={cues} /> : null;
+/** Cinema Pill: dark frosted-glass pill with crisp white text. */
+const PillCaption: React.FC<CapProps> = ({ cues, safe, opts }) => {
+  const t = useTime();
+  const frame = useCurrentFrame();
+  const { width, height, fps } = useVideoConfig();
+  const i = activeCueIndex(cues, t);
+  if (i < 0) return null;
+  const c = cues[i];
+  const p = spring({ frame: frame - c.start * fps, fps, config: { damping: 20, stiffness: 170 }, durationInFrames: 14 });
+  const out = interpolate(t, [c.end - 0.14, c.end], [1, 0], CLAMP);
+  const size = capSize(width, height, opts, 0.78);
+  return (
+    <div style={{ ...capBox(width, height, safe, opts), opacity: Math.min(1, p * 1.5) * out }}>
+      <div
+        lang="bn"
+        style={{
+          fontFamily: BENGALI_FONT_STACK,
+          fontWeight: 600,
+          fontSize: size,
+          lineHeight: 1.5,
+          color: "#fff",
+          textAlign: "center",
+          maxWidth: "100%",
+          padding: "0.38em 1.05em",
+          borderRadius: size * 1.1,
+          background: "linear-gradient(180deg, rgba(24,28,52,0.62), rgba(8,10,24,0.56))",
+          backdropFilter: "blur(18px) saturate(1.5)",
+          WebkitBackdropFilter: "blur(18px) saturate(1.5)",
+          border: "1px solid rgba(255,255,255,0.22)",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.28)",
+          translate: `0px ${(1 - p) * 18}px`,
+          scale: String(0.94 + 0.06 * p),
+          textShadow: "0 1px 2px rgba(0,0,0,0.5)",
+        }}
+      >
+        {c.text}
+      </div>
+    </div>
+  );
+};
+
+/** Keyword = longest word (4+ characters), or the first Latin/number token (React, API, 2025). */
+const keywordIndex = (words: string[]) => {
+  const latin = words.findIndex((w) => /[A-Za-z0-9]/.test(w));
+  if (latin >= 0) return latin;
+  let best = -1;
+  let len = 2;
+  words.forEach((w, k) => {
+    const n = splitGraphemes(w.replace(/[।,.!?;:"'()]/g, "")).length;
+    if (n > len) {
+      len = n;
+      best = k;
+    }
+  });
+  return best;
+};
+
+/** Gradient Glow: soft drop-shadow glow with a gradient-coloured keyword. */
+const GlowCaption: React.FC<CapProps> = ({ cues, accent, accent2, safe, opts }) => {
+  const t = useTime();
+  const frame = useCurrentFrame();
+  const { width, height, fps } = useVideoConfig();
+  const i = activeCueIndex(cues, t);
+  if (i < 0) return null;
+  const c = cues[i];
+  const words = splitWords(c.text);
+  const key = keywordIndex(words);
+  const out = interpolate(t, [c.end - 0.14, c.end], [1, 0], CLAMP);
+  const size = capSize(width, height, opts, 0.92);
+  return (
+    <div style={{ ...capBox(width, height, safe, opts), opacity: out }}>
+      <div lang="bn" style={{ fontFamily: BENGALI_FONT_STACK, fontWeight: 700, fontSize: size, lineHeight: 1.5, textAlign: "center", color: "#fff", filter: `drop-shadow(0 4px 14px rgba(0,0,0,0.55)) drop-shadow(0 0 20px ${accent}55)` }}>
+        {words.map((w, k) => {
+          const p = spring({ frame: frame - (c.start + Math.min(k * 0.05, 0.4)) * fps, fps, config: { damping: 22, stiffness: 150 }, durationInFrames: 16 });
+          const hot = k === key;
+          return (
+            <span key={k} style={{ display: "inline-block", marginRight: "0.26em", opacity: Math.min(1, p * 1.5), translate: `0px ${(1 - p) * 14}px`, scale: String(hot ? 1.08 : 1), ...(hot ? { backgroundImage: `linear-gradient(95deg, ${accent}, ${accent2})`, WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent", WebkitTextFillColor: "transparent" } : {}) }}>
+              {w}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/** Studio-owned captions overlay (Main composition draws it from the UI's subtitle settings). */
+export const StudioCaptions: React.FC<{ cues: Cue[]; style: CaptionStyle; accent?: string; accent2?: string; safe?: SafeZone; opts?: CaptionOpts }> = ({ cues, style, accent = "#FBBF24", accent2 = "#F472B6", safe, opts }) => {
+  const p = { cues, accent, accent2, safe, opts };
+  switch (style) {
+    case "kinetic":
+      return <KineticCaption {...p} />;
+    case "pill":
+      return <PillCaption {...p} />;
+    case "glow":
+      return <GlowCaption {...p} />;
+    case "classic":
+      return <ClassicCaption {...p} />;
+    default:
+      return null;
+  }
+};
 
 /**
  * DEPRECATED for generated videos: captions are drawn by the studio overlay according to the user's caption
@@ -378,7 +471,7 @@ export const Presenter: React.FC<{
 }> = ({ character, cues, size = 600, expression, wave, look, style }) => {
   const t = useTime();
   if (character === "none") return null;
-  const resolved = look ?? CHARACTER_STYLES[character === "auto" ? "storyteller" : character];
+  const resolved = look ?? CHARACTER_STYLES[character === "auto" || character === "custom" ? "storyteller" : character];
   const m = mouthOpen(cues, t);
   return <Character look={resolved} t={t} mouth={m} expression={expression ?? (m > 0 ? "happy" : "neutral")} wave={wave} size={size} style={style} />;
 };

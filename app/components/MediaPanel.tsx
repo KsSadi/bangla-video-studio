@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import type { AssetItem } from "@/lib/settings";
+import { Film } from "lucide-react";
 import { Collapsible, btn, field } from "./ui";
 
 type Props = {
@@ -48,7 +49,7 @@ export function MediaPanel({ jobId, assets, notes, onAssets, onNotes, disabled }
       {!jobId && <p className="mb-3 text-sm text-accent">Load a voice file first (Step 1); assets are stored inside the project.</p>}
       <input ref={input} type="file" multiple accept="image/*,.mp4,.webm,.mov" className="sr-only" id="asset-input" disabled={!jobId || disabled || busy} onChange={(e) => void upload(e.target.files)} />
       <label htmlFor="asset-input" className={`${btn} inline-block cursor-pointer ${!jobId || disabled ? "pointer-events-none opacity-40" : ""}`}>{busy ? "Uploading…" : "+ Add images / clips"}</label>
-      {err && <p role="alert" className="mt-2 text-sm text-red-300">{err}</p>}
+      {err && <p role="alert" className="mt-2 text-sm text-red-700">{err}</p>}
 
       {assets.length > 0 && (
         <ul className="mt-3 space-y-2">
@@ -58,7 +59,7 @@ export function MediaPanel({ jobId, assets, notes, onAssets, onNotes, disabled }
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={`/api/assets?id=${jobId}&file=${encodeURIComponent(a.file)}`} alt="" className="size-12 rounded object-cover" />
               ) : (
-                <span className="grid size-12 place-items-center rounded bg-raised text-lg" aria-hidden>🎞</span>
+                <span className="grid size-12 place-items-center rounded bg-raised text-muted" aria-hidden><Film className="size-5" /></span>
               )}
               <code className="w-40 truncate font-mono text-xs text-muted" title={`public/assets/${a.file}`}>{a.file}</code>
               <input

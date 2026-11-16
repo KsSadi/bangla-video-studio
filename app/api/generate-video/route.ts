@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { startGenerate, startRerender, startRevise } from "@/lib/pipeline";
+import { startExtras, startGenerate, startRerender, startRevise } from "@/lib/pipeline";
 import { sanitizeSettings, type Quality } from "@/lib/settings";
 import { getJob, isBusy } from "@/lib/store";
 
@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   if (!job) return NextResponse.json({ error: "Unknown project. Upload the voice file again or reopen it from Recent Projects." }, { status: 404 });
   if (isBusy()) return NextResponse.json({ error: "A job is already running." }, { status: 409 });
 
-  const action = body.action === "rerender" || body.action === "revise" ? body.action : "generate";
+  const action = body.action === "rerender" || body.action === "revise" || body.action === "extras" ? body.action : "generate";
   const quality: Quality = body.quality === "final" ? "final" : "draft";
   const settings = sanitizeSettings(body.settings, job.settings);
   const srt = str(body.srt, 500_000) || job.srt || "";
@@ -42,7 +42,10 @@ export async function POST(req: Request) {
   if (baseVersion !== undefined && !job.versions.some((v) => v.n === baseVersion)) return NextResponse.json({ error: "Unknown version." }, { status: 400 });
   const input = { settings, srt, quality, password: str(body.password, 500) };
 
-  if (action === "generate") startGenerate(job, input);
+  if (action === "extras") {
+    if (!job.versions.length) return NextResponse.json({ error: "Render a video first." }, { status: 400 });
+    startExtras(job, { ...input, baseVersion });
+  } else if (action === "generate") startGenerate(job, input);
   else if (action === "rerender") {
     if (!job.versions.length) return NextResponse.json({ error: "Generate a video first." }, { status: 400 });
     startRerender(job, { ...input, baseVersion });

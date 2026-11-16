@@ -22,6 +22,8 @@ export type TalkingCharacterProps = {
   cues?: Cue[];
   size?: number;
   style?: React.CSSProperties;
+  /** Dialogue Mode: false keeps the mouth closed (the other speaker is talking). Default true. */
+  speaking?: boolean;
 };
 
 /** Speech loudness 0..1 at `frame`, from the 125 Hz - 1.5 kHz band where voiced Bengali vowels live. */
@@ -39,7 +41,8 @@ const EMOTION: Record<Emotion, { talking: Expression; idle: Expression }> = {
   excited: { talking: "happy", idle: "surprised" },
 };
 
-const Body: React.FC<TalkingCharacterProps & { mouth: number }> = ({ character, look, emotion = "explaining", size = 600, style, mouth }) => {
+const Body: React.FC<TalkingCharacterProps & { mouth: number }> = ({ character, look, emotion = "explaining", size = 600, style, mouth: rawMouth, speaking = true }) => {
+  const mouth = speaking ? rawMouth : 0;
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;

@@ -5,7 +5,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { DEFAULT_SETTINGS, sanitizeSettings, type ChapterInfo, type Quality, type RevisionInfo, type SeoPack, type StudioSettings, type VersionInfo } from "@/lib/settings";
+import { DEFAULT_SETTINGS, sanitizeSettings, type ChapterInfo, type Quality, type RevisionInfo, type SeoPack, type ShortClip, type StudioSettings, type VersionInfo } from "@/lib/settings";
 
 export const ROOT = process.cwd();
 export const PROJECTS_DIR = path.join(ROOT, "projects");
@@ -13,7 +13,17 @@ export const DATA_DIR = path.join(ROOT, "data"); // brand kit etc. (shared by al
 
 export type StepId = "transcribe" | "prepare" | "plan" | "record" | "render" | "extras";
 export type StepState = "pending" | "active" | "done" | "error" | "skipped";
-export type Step = { id: StepId; label: string; state: StepState };
+export type Step = {
+  id: StepId;
+  label: string;
+  state: StepState;
+  /** 0-100 when the step can measure itself (Whisper, render, upload); undefined = indeterminate. */
+  progress?: number;
+  /** One short live line shown under the step (current file, ETA, download %...). */
+  detail?: string;
+  startedAt?: number;
+  endedAt?: number;
+};
 
 export type Job = {
   id: string;
@@ -23,11 +33,12 @@ export type Job = {
   steps: Step[];
   logs: string[];
   audioFile: string;
-  subtitlesSource: "whisper" | "srt" | "";
+  subtitlesSource: "whisper" | "srt" | "tts" | "";
   srt?: string;
   settings: StudioSettings;
   versions: VersionInfo[];
   revisions: RevisionInfo[];
+  shorts: ShortClip[];
   seo?: SeoPack;
   thumbnail: boolean;
   /** Claude tokens used by the current/last run (shown in the console so savings are visible). */
@@ -46,6 +57,10 @@ export const jobDir = (id: string) => path.join(PROJECTS_DIR, id);
 export const publicDir = (id: string) => path.join(jobDir(id), "public");
 export const versionsDir = (id: string) => path.join(jobDir(id), "versions");
 export const versionFile = (id: string, n: number) => path.join(versionsDir(id), `v${n}.mp4`);
+export const shortsDir = (id: string) => path.join(jobDir(id), "shorts");
+export const shortFile = (id: string, n: number) => path.join(shortsDir(id), `short-${n}.mp4`);
+/** props.json of the last planned video (scene plan + cues + audio names): feeds the live preview and the Shorts clipper. */
+export const previewPath = (id: string) => path.join(jobDir(id), "preview.json");
 export const thumbnailPath = (id: string) => path.join(jobDir(id), "thumbnail.png");
 
 const STEP_LABELS: Record<StepId, string> = {
@@ -83,6 +98,7 @@ export function createJob(audioExt: string, rawName: string): Job {
     settings: { ...DEFAULT_SETTINGS },
     versions: [],
     revisions: [],
+    shorts: [],
     thumbnail: false,
   };
   fs.mkdirSync(publicDir(id), { recursive: true });
@@ -104,6 +120,7 @@ export function saveJob(job: Job) {
       settings: job.settings,
       versions: job.versions,
       revisions: job.revisions,
+      shorts: job.shorts,
       seo: job.seo,
       thumbnail: job.thumbnail,
     };
@@ -136,11 +153,12 @@ export function loadJob(id: string): Job | undefined {
       steps: freshSteps(),
       logs: [],
       audioFile: String(d.audioFile ?? ""),
-      subtitlesSource: d.subtitlesSource === "srt" || d.subtitlesSource === "whisper" ? d.subtitlesSource : "",
+      subtitlesSource: d.subtitlesSource === "srt" || d.subtitlesSource === "whisper" || d.subtitlesSource === "tts" ? d.subtitlesSource : "",
       srt: fs.existsSync(srtFile) ? fs.readFileSync(srtFile, "utf8") : undefined,
       settings: sanitizeSettings(d.settings),
       versions,
       revisions: Array.isArray(d.revisions) ? d.revisions : [],
+      shorts: Array.isArray(d.shorts) ? d.shorts.filter((c: ShortClip) => c && typeof c.id === "string").map((c: ShortClip) => (c.state === "rendering" ? { ...c, state: "ready" as const } : c)) : [],
       seo: d.seo,
       thumbnail: !!d.thumbnail && fs.existsSync(thumbnailPath(id)),
       videoReady: versions.length > 0,
@@ -170,20 +188,44 @@ export function listProjects(): ProjectSummary[] {
 }
 
 export function resetSteps(job: Job, keepTranscribe = true) {
-  for (const s of job.steps) if (!(keepTranscribe && s.id === "transcribe")) s.state = "pending";
+  for (const s of job.steps) {
+    if (keepTranscribe && s.id === "transcribe") continue;
+    s.state = "pending";
+    s.progress = s.detail = s.startedAt = s.endedAt = undefined;
+  }
 }
 
 export const log = (job: Job, line: string) => {
   const text = line.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "").trimEnd();
   if (!text) return;
   job.logs.push(`[${new Date().toLocaleTimeString("en-GB")}] ${text}`);
+  const live = job.steps.find((s) => s.state === "active");
+  if (live && /^claude/.test(text)) live.detail = text.replace(/^claude:?\s*/, "").slice(0, 110);
   if (job.logs.length > 3000) job.logs.splice(0, job.logs.length - 3000);
 };
 
 export const setStep = (job: Job, id: StepId, state: StepState) => {
   const step = job.steps.find((s) => s.id === id)!;
   step.state = state;
-  if (state === "active") log(job, `▶ ${step.label}`);
+  if (state === "active") {
+    step.startedAt = Date.now();
+    step.endedAt = undefined;
+    step.progress = undefined;
+    step.detail = undefined;
+    log(job, `▶ ${step.label}`);
+  } else if (state === "done" || state === "error" || state === "skipped") {
+    step.endedAt = Date.now();
+    step.detail = state === "error" ? step.detail : undefined;
+    if (state === "done") step.progress = 100;
+  }
+};
+
+/** Report real progress for the active step (clamped 0-100). `detail` is a short live status line. */
+export const setProgress = (job: Job, id: StepId, pct: number | undefined, detail?: string) => {
+  const step = job.steps.find((s) => s.id === id);
+  if (!step) return;
+  if (pct != null) step.progress = Math.max(step.progress ?? 0, Math.min(100, Math.round(pct)));
+  if (detail !== undefined) step.detail = detail;
 };
 
 export type { Quality, ChapterInfo };

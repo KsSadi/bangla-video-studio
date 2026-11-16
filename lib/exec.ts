@@ -142,8 +142,8 @@ export function extractJson(text: string): unknown {
  * Minimum-token Claude call: one turn, no tools, tiny system prompt, everything needed is inlined in `prompt`,
  * and the answer is a JSON value read from stdout. Retries once on unparsable output.
  */
-export async function claudeJson(job: Job, prompt: string, tier: Tier): Promise<unknown> {
-  const model = modelFor(tier, job.settings.tokenSaver);
+export async function claudeJson(job: Job, prompt: string, tier: Tier, modelOverride?: string): Promise<unknown> {
+  const model = okModel(modelOverride) ?? modelFor(tier, job.settings.tokenSaver);
   const base = ["-p", "--output-format", "stream-json", "--verbose", "--setting-sources", "project,local"];
   if (model) base.push("--model", model);
   log(job, `claude -p (${model ?? "default model"}, JSON only, no tools) working…`);

@@ -1,9 +1,15 @@
 export const FPS = 30;
 
-/** One subtitle cue. Times are seconds on the voiceover timeline. */
-export type Cue = { start: number; end: number; text: string };
+export type Speaker = "A" | "B";
 
-export type CharacterId = "tech-mentor" | "storyteller" | "friendly-teacher" | "auto" | "none";
+/** One subtitle cue. Times are seconds on the voiceover timeline. `speaker` is only used in Dialogue Mode. */
+export type Cue = { start: number; end: number; text: string; speaker?: Speaker };
+
+/** "custom" = a look saved in the Character Builder library (passed to the renderer as `lookA`/`lookB`). */
+export type CharacterId = "tech-mentor" | "storyteller" | "friendly-teacher" | "auto" | "none" | "custom";
+
+/** Fractions of the frame kept clear of platform UI (Reels / Shorts / TikTok). */
+export type SafeZone = { top: number; bottom: number; left: number; right: number };
 
 /** Logged by scripts/recorder.mjs. x/y/box are CSS px inside a vw x vh viewport. */
 export type RecEvent = {
@@ -17,7 +23,16 @@ export type RecEvent = {
   vh: number;
 };
 
-export type CaptionStyle = "kinetic" | "classic" | "none";
+/**
+ * Subtitle themes (Hind Siliguri / Noto Sans Bengali):
+ *   kinetic  Viral Word-Pop: words pop in, the spoken word scales up in the accent colour (Reels / Shorts look)
+ *   pill     Cinema Pill: dark frosted-glass pill with crisp white text
+ *   glow     Gradient Glow: soft glow + gradient-coloured keyword
+ *   classic  Minimalist Classic: clean bottom-aligned bar
+ *   none     no on-screen captions (the .srt still drives scene timing)
+ */
+export type CaptionStyle = "kinetic" | "pill" | "glow" | "classic" | "none";
+export type CaptionOpts = { size?: number; position?: "bottom" | "center" };
 
 /** User media (public/assets/…) Claude should embed in animated frames at the requested moments. */
 export type MediaAsset = { src: string; kind: "image" | "video"; instruction: string };
@@ -46,6 +61,7 @@ export type VideoProps = {
   events?: RecEvent[]; // tutorial mode only
   fps?: number; // 30 for final renders, 15 for fast drafts (default 30)
   captionStyle?: CaptionStyle; // drawn by the studio overlay, never by the generated video
+  captionOpts?: CaptionOpts; // font size multiplier (1 = default) and vertical position
   brand?: BrandProps;
   bgmSrc?: string; // background music file; the studio overlay loops and auto-ducks it
   bgmVolume?: number;
@@ -54,6 +70,14 @@ export type VideoProps = {
   /** scene-plan.json (validated). Present = the JSON scene engine renders the video; absent = generated/Video.tsx (custom fallback). */
   plan?: import("../engine/plan").ScenePlan;
   lipsyncSrc?: string; // small mono copy of the voice used for waveform lip-sync
+  /** Dialogue Mode: two characters on screen; the one named by `cue.speaker` is spotlighted and lip-syncs. */
+  dialogue?: boolean;
+  characterB?: Exclude<CharacterId, "auto" | "none">; // built-in look of speaker B (when no custom lookB)
+  lookA?: import("../characters/Character").CharacterStyle; // custom looks from the Character Builder
+  lookB?: import("../characters/Character").CharacterStyle;
+  /** Vertical Shorts: keep captions and key content out of the platform UI zones. */
+  safeZone?: SafeZone;
+  hookTitle?: string; // Shorts: bold Bengali hook shown at the top for the first seconds
 };
 
 /** Total composition length in seconds: voice + optional outro. */
@@ -74,10 +98,12 @@ export function parseSrt(srt: string): Cue[] {
     const i = lines.findIndex((l) => l.includes("-->"));
     if (i < 0) continue;
     const [a, b] = lines[i].split("-->");
-    const text = lines.slice(i + 1).join(" ").trim();
+    let text = lines.slice(i + 1).join(" ").trim();
+    const sp = text.match(/^\[([AB])\]\s*/); // Dialogue Mode marker, kept inside the .srt so it survives save/reload
+    if (sp) text = text.slice(sp[0].length);
     const start = toSec(a);
     const end = toSec(b);
-    if (text && Number.isFinite(start) && Number.isFinite(end) && end > start) cues.push({ start, end, text });
+    if (text && Number.isFinite(start) && Number.isFinite(end) && end > start) cues.push({ start, end, text, ...(sp ? { speaker: sp[1] as Speaker } : {}) });
   }
   return cues;
 }
@@ -88,5 +114,5 @@ export function toSrt(cues: Cue[]): string {
     const p = (n: number, l = 2) => String(n).padStart(l, "0");
     return `${p(Math.floor(ms / 3600000))}:${p(Math.floor(ms / 60000) % 60)}:${p(Math.floor(ms / 1000) % 60)},${p(ms % 1000, 3)}`;
   };
-  return cues.map((c, i) => `${i + 1}\n${ts(c.start)} --> ${ts(c.end)}\n${c.text}\n`).join("\n");
+  return cues.map((c, i) => `${i + 1}\n${ts(c.start)} --> ${ts(c.end)}\n${c.speaker ? `[${c.speaker}] ` : ""}${c.text}\n`).join("\n");
 }

@@ -18,9 +18,11 @@ type Props = {
   onRegenerate?: () => void;
   disabled?: boolean;
   source: string;
+  /** Dialogue Mode: show the Speaker A/B selector on each row. */
+  dialogue?: boolean;
 };
 
-export function SubtitleEditor({ cues, setCues, audioUrl, verification, setVerification, requireVerified, setRequireVerified, onSave, onRegenerate, disabled, source }: Props) {
+export function SubtitleEditor({ cues, setCues, audioUrl, verification, setVerification, requireVerified, setRequireVerified, onSave, onRegenerate, disabled, source, dialogue }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
   const stopAt = useRef<number | null>(null);
   const checkRef = useRef<{ indices: number[]; pos: number } | null>(null);
@@ -129,7 +131,7 @@ export function SubtitleEditor({ cues, setCues, audioUrl, verification, setVerif
 
   const badge =
     verification === "verified"
-      ? { text: "Timestamps Verified ✓", cls: "border-emerald-500/60 bg-emerald-500/15 text-emerald-300" }
+      ? { text: "Timestamps Verified ✓", cls: "border-emerald-500/60 bg-emerald-500/15 text-emerald-700" }
       : verification === "skipped"
         ? { text: "Check skipped", cls: "border-line bg-ink text-muted" }
         : { text: "Not verified yet", cls: "border-accent/60 bg-accent/10 text-accent" };
@@ -141,14 +143,20 @@ export function SubtitleEditor({ cues, setCues, audioUrl, verification, setVerif
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="font-semibold">Subtitle timeline ({cues.length})</span>
         <span className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${badge.cls}`} role="status">{badge.text}</span>
-        <span className="rounded-full bg-ink px-2 py-0.5 text-[11px] text-muted">{source === "srt" ? "from your .srt" : source === "whisper" ? "from Whisper" : ""}</span>
+        <span className="rounded-full bg-ink px-2 py-0.5 text-[11px] text-muted">{source === "srt" ? "from your .srt" : source === "whisper" ? "from Whisper" : source === "tts" ? "from Auto-Voice (exact timings)" : ""}</span>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <button type="button" className={btn} onClick={startSpotCheck} disabled={disabled || !audioUrl}>🎲 Random Sync Spot-Check</button>
+        <button type="button" className={btn} onClick={startSpotCheck} disabled={disabled || !audioUrl}>Random Sync Spot-Check</button>
         <button type="button" className={btn} onClick={() => { stopCheck(); setVerification("skipped"); }} disabled={disabled}>Skip Check</button>
         <button type="button" className={btn} onClick={save} disabled={disabled}>{saved === "saving" ? "Saving…" : saved === "saved" ? "Saved ✓" : saved === "error" ? "Save failed" : "Save subtitles.srt"}</button>
         <button type="button" className={btn} onClick={download}>Download .srt</button>
+        {dialogue && (
+          <>
+            <button type="button" className={btn} disabled={disabled} onClick={() => setCues((cs) => cs.map((c, i) => ({ ...c, speaker: i % 2 ? "B" : "A" })))}>Auto-alternate A / B</button>
+            <button type="button" className={btn} disabled={disabled} onClick={() => setCues((cs) => cs.map((c) => ({ ...c, speaker: "A" })))}>All A</button>
+          </>
+        )}
         {onRegenerate && (
           <button type="button" className={btn} onClick={() => confirm("Run Whisper again? This replaces the current subtitles, including your edits.") && onRegenerate()} disabled={disabled}>
             Re-generate with Whisper
@@ -189,6 +197,15 @@ export function SubtitleEditor({ cues, setCues, audioUrl, verification, setVerif
               <button type="button" onClick={() => { stopCheck(); playSlice(i); }} className="mt-1 shrink-0 rounded-md bg-ink px-2.5 py-1.5 font-mono text-xs text-muted hover:text-accent" aria-label={`Play line ${i + 1}, ${fmt(c.start)} to ${fmt(c.end)}`}>
                 ▶ {i + 1}
               </button>
+              {dialogue && (
+                <div role="radiogroup" aria-label={`Line ${i + 1} speaker`} className="mt-1 inline-flex shrink-0 overflow-hidden rounded-lg border border-line text-xs font-bold">
+                  {(["A", "B"] as const).map((sp) => (
+                    <button key={sp} type="button" role="radio" aria-checked={(c.speaker ?? "A") === sp} disabled={disabled} onClick={() => edit(i, { speaker: sp })} className={`px-2.5 py-1.5 transition ${(c.speaker ?? "A") === sp ? (sp === "A" ? "bg-accent text-accent-ink" : "bg-violet-600 text-white") : "bg-panel text-muted hover:text-fg"}`}>
+                      {sp}
+                    </button>
+                  ))}
+                </div>
+              )}
               <div className="mt-1 flex shrink-0 items-center gap-1 font-mono text-xs">
                 <input type="number" step="0.05" min="0" aria-label={`Line ${i + 1} start (seconds)`} value={c.start} onChange={(e) => edit(i, { start: num(e.target.value, c.start) })} className={`${field} w-20 !px-1.5 !py-1 ${bad ? "!border-red-500" : ""}`} />
                 <button type="button" title="Set start to current playhead" className="rounded bg-ink px-1.5 py-1 text-muted hover:text-accent" onClick={() => edit(i, { start: playhead() })}>⌖</button>

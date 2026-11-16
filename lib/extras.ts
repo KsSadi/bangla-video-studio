@@ -10,7 +10,7 @@ import { claudeJson, ffmpeg, node, remotionBrowserArgs } from "@/lib/exec";
 import type { SeoPack, StudioSettings } from "@/lib/settings";
 import { buildChapters } from "@/lib/chapters";
 import { buildSeoPrompt } from "@/lib/prompts";
-import { jobDir, log, publicDir, thumbnailPath, type Job } from "@/lib/store";
+import { jobDir, log, publicDir, setProgress, thumbnailPath, type Job } from "@/lib/store";
 import type { Cue } from "@/remotion/lib/types";
 
 const strList = (v: unknown, max: number, len = 200) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().slice(0, len)).slice(0, max) : []);
@@ -21,6 +21,7 @@ export async function makeExtras(job: Job, o: { settings: StudioSettings; cues: 
   const pub = publicDir(job.id);
   const brand = loadBrand();
   let raw: Record<string, unknown> = {};
+  setProgress(job, "extras", undefined, "Writing titles, description and chapters");
   try {
     // light task: one no-tools turn on the light model (Haiku in Token Saver mode)
     raw = (await claudeJson(job, buildSeoPrompt(o.cues), "light")) as Record<string, unknown>;
@@ -48,6 +49,7 @@ export async function makeExtras(job: Job, o: { settings: StudioSettings; cues: 
   }
 
   if (o.settings.thumbnail) {
+    setProgress(job, "extras", undefined, "Rendering thumbnail.png");
     const frame = path.join(pub, "thumb-frame.jpg");
     await ffmpeg(job, ["-ss", String(Math.max(0.5, o.durationSec * 0.35)), "-i", o.videoFile, "-frames:v", "1", "-q:v", "2", frame], { quiet: true });
     let logoSrc: string | undefined;

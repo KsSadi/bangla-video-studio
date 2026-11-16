@@ -25,24 +25,158 @@
   font-display: swap;
 }
 
-@theme {
+@theme inline {
   --font-sans: "Hind Siliguri", "Noto Sans Bengali", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, "Cascadia Code", Consolas, monospace;
-  --color-ink: #0e1116;
-  --color-panel: #161b22;
-  --color-raised: #1e252e;
-  --color-line: #2c3540;
-  --color-muted: #8b98a8;
-  --color-accent: #f5a524;
-  --color-accent-ink: #1a1203;
+  --color-ink: var(--ink);
+  --color-panel: var(--panel);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-muted: var(--muted);
+  --color-fg: var(--fg);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-ink: var(--accent-ink);
 }
 
+:root {
+  color-scheme: light;
+  --ink: #eef3f5;
+  --panel: #ffffff;
+  --raised: #f6f9fa;
+  --line: #dce5e9;
+  --muted: #5d727d;
+  --fg: #0d1c23;
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
+  --accent-ink: #ffffff;
+  --glow: rgb(13 148 136 / 0.14);
+  --shadow: 0 1px 2px rgb(15 40 50 / 0.05), 0 8px 24px -8px rgb(15 40 50 / 0.1);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink: #070c10;
+  --panel: #0e161c;
+  --raised: #141f27;
+  --line: #213039;
+  --muted: #8aa1ac;
+  --fg: #e8f0f3;
+  --accent: #14b8a6;
+  --accent-strong: #2dd4bf;
+  --accent-ink: #032524;
+  --glow: rgb(20 184 166 / 0.14);
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 10px 30px -10px rgb(0 0 0 / 0.6);
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
 body {
-  background: var(--color-ink);
-  color: #e8edf3;
+  background:
+    radial-gradient(1100px 500px at 80% -15%, var(--glow), transparent 60%),
+    radial-gradient(800px 400px at -10% 110%, var(--glow), transparent 60%),
+    var(--ink);
+  background-attachment: fixed;
+  color: var(--fg);
+}
+.shadow-card {
+  box-shadow: var(--shadow);
+}
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+::selection {
+  background: var(--glow);
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+  background-clip: padding-box;
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(350%);
+  }
+}
+.bar-indeterminate {
+  width: 30%;
+  animation: indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes stripes {
+  to {
+    background-position: 28px 0;
+  }
+}
+.bar-stripes {
+  position: relative;
+  overflow: hidden;
+}
+.bar-stripes::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(115deg, rgb(255 255 255 / 0.28) 25%, transparent 25%, transparent 50%, rgb(255 255 255 / 0.28) 50%, rgb(255 255 255 / 0.28) 75%, transparent 75%);
+  background-size: 28px 28px;
+  animation: stripes 0.9s linear infinite;
+}
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.35s ease both;
+}
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgb(20 184 166 / 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 10px rgb(20 184 166 / 0);
+  }
+}
+.pulse-ring {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+@keyframes spin-slow {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-indeterminate,
+  .bar-stripes::after,
+  .pulse-ring,
+  .rise,
+  .spin-slow {
+    animation: none;
+  }
 }

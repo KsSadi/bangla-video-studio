@@ -7,3 +7,6 @@ _reference_skills/
 next-env.d.ts
 *.tsbuildinfo
 __pycache__/
+
+# local secrets
+.env*.local

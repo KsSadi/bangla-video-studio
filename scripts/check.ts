@@ -95,3 +95,161 @@ assert.ok(ap.scenes.length >= 4 && ap.scenes[0].fromCue === 1);
 assert.deepEqual(normalizePlan(ap, pc.length), ap); // built-in plans are already valid
 assert.deepEqual(normalizePlan(tutorialPlan(true), 3), tutorialPlan(true));
 console.log("ok: scene plan validation, timing, revision targeting + merge");
+
+// ---- pro-creator features: dialogue speakers, shorts slicing, b-roll licence filter
+import { clampClip, fmtClock, normalizeClips, parseClock, sliceShort } from "../remotion/engine/slice.ts";
+import { isFreeLicense } from "../lib/broll.ts";
+
+const dl = parseSrt("1\n00:00:00,000 --> 00:00:02,000\n[A] হ্যালো\n\n2\n00:00:02,000 --> 00:00:04,000\n[B] স্বাগতম\n\n3\n00:00:04,000 --> 00:00:06,000\nশেষ\n");
+assert.deepEqual(dl.map((c) => c.speaker), ["A", "B", undefined]);
+assert.equal(dl[0].text, "হ্যালো"); // marker stripped from the caption text
+assert.deepEqual(parseSrt(toSrt(dl)), dl); // speaker tags survive save/reload
+
+assert.equal(parseClock("01:10"), 70);
+assert.equal(parseClock("1:02:03"), 3723);
+assert.equal(parseClock("০১:১০"), 70);
+assert.equal(parseClock("70.5"), 70.5);
+assert.equal(parseClock("abc"), null);
+assert.equal(fmtClock(75.4), "01:15");
+
+const long = Array.from({ length: 30 }, (_, i) => ({ start: i * 4, end: i * 4 + 3.5, text: `লাইন ${i + 1}` }));
+const lplan = normalizePlan({ scenes: [{ id: "a", fromCue: 1, elements: [{ type: "title", text: "এক" }] }, { id: "b", fromCue: 11, elements: [{ type: "title", text: "দুই", at: 42 }], zoom: [{ at: 50, x: 0.5, y: 0.5, scale: 1.5, hold: 1 }, { at: 5, x: 0.5, y: 0.5, scale: 1.5, hold: 1 }] }, { id: "c", fromCue: 21, elements: [{ type: "title", text: "তিন" }] }] }, long.length)!;
+const cut = sliceShort(lplan, long, 120, 40, 80); // cues 11..20 -> scene b only (scene c starts at 80)
+assert.equal(cut.durationSec, 40);
+assert.equal(cut.cues[0].start, 0);
+assert.equal(cut.cues.length, 10);
+assert.deepEqual(cut.plan.scenes.map((x) => x.id), ["b"]);
+assert.equal(cut.plan.scenes[0].fromCue, 1);
+assert.deepEqual(cut.plan.scenes[0].elements[0], { type: "title", text: "দুই", at: 2 }); // absolute `at` shifted by -start
+assert.deepEqual(cut.plan.scenes[0].zoom?.map((z) => z.at), [10]); // keyframe before the window dropped, the other shifted
+const cut2 = sliceShort(lplan, long, 120, 30, 90); // spans scenes a (partly), b, c (partly)
+assert.deepEqual(cut2.plan.scenes.map((x) => x.id), ["a", "b", "c"]);
+assert.deepEqual(cut2.plan.scenes.map((x) => x.fromCue), [1, 4, 14]); // renumbered against the sliced cues (cues 8,9,10 kept before scene b)
+
+assert.deepEqual(clampClip("00:10", "00:12", 120), null); // under 5 s
+assert.deepEqual(clampClip("01:10", "01:45", 120, "  হুক  "), { start: 70, end: 105, hookTitle: "হুক" });
+assert.equal(clampClip("01:10", "09:00", 120)!.end, 120); // clamped to the video
+const sug = normalizeClips({ clips: [{ start: "00:41", end: "01:12", hookTitle: "এক" }, { start: "00:45", end: "01:10", hookTitle: "overlap" }, { start: "1:40", end: "1:42" }, { start: "bad", end: "x" }] }, long, 120, 3);
+assert.equal(sug.length, 2); // overlap and invalid dropped
+assert.ok(sug[0].start === 40 && sug[0].end > 60); // snapped to cue boundaries
+assert.deepEqual(normalizeClips("nope", long, 120), []);
+
+assert.ok(isFreeLicense("CC0") && isFreeLicense("Public domain") && isFreeLicense("PD-old"));
+assert.ok(!isFreeLicense("CC BY-SA 4.0") && !isFreeLicense(""));
+console.log("ok: dialogue speakers, shorts slicing, clip validation, b-roll licence filter");
+
+// ---- reliability upgrades: chunk planning, auto-replace dictionary, presets
+import { chunkSettings, planChunks } from "../lib/chunk-plan.ts";
+import { applyRules, applyToCues, cleanRules } from "../lib/dictionary-core.ts";
+import { PRESET_KEYS, presetFromSettings } from "../lib/settings.ts";
+
+assert.deepEqual(planChunks(600, 15, 15), [[0, 224], [225, 449], [450, 599]]); // 40 s at 15 fps in 15 s chunks
+assert.deepEqual(planChunks(100, 30, 90), [[0, 99]]); // shorter than a chunk
+assert.deepEqual(planChunks(2700 * 2 + 30, 30, 90), [[0, 2699], [2700, 5429]]); // tiny 1 s tail merged into the previous chunk
+const big = planChunks(30 * 600, 30, 90); // 10 minutes
+assert.equal(big.length, 7);
+assert.equal(big[0][0], 0);
+assert.equal(big[big.length - 1][1], 30 * 600 - 1);
+assert.ok(big.every(([a, b], i) => i === 0 || a === big[i - 1][1] + 1 && b >= a)); // gapless, no overlap
+assert.deepEqual(chunkSettings({}), { chunkSec: 90, minSec: 180 });
+assert.deepEqual(chunkSettings({ STUDIO_CHUNK_SEC: "5", STUDIO_CHUNK_MIN: "x" }), { chunkSec: 5, minSec: 180 });
+
+const rules = cleanRules([{ from: "রিয়্যাক্ট", to: "React" }, { from: "এপিআই", to: "API" }, { from: "api", to: "API" }, { from: " ", to: "x" }, { from: "same", to: "same" }, { from: "ক্লড", to: "Claude" }, { from: "এপিআই", to: "dup" }]);
+assert.equal(rules.length, 4); // empty, identical and duplicate rules dropped
+assert.deepEqual(applyRules("রিয়্যাক্ট দিয়ে এপিআইকে ডাকুন, ক্লড ভালো", rules), { text: "React দিয়ে APIকে ডাকুন, Claude ভালো", count: 3 });
+assert.equal(applyRules("call the Api and API", rules).text, "call the API and API"); // Latin rules ignore case
+assert.equal(applyRules("এপিআই", [{ from: "এপিআই", to: "এপিআই-2" }, { from: "এপিআই-2", to: "boom" }]).text, "এপিআই-2"); // one pass: replacements are never re-replaced
+const fixedCues = applyToCues([{ start: 0, end: 1, text: "রিয়্যাক্ট" }, { start: 1, end: 2, text: "কিছু না" }], rules);
+assert.deepEqual([fixedCues.count, fixedCues.lines, fixedCues.cues[0].text, fixedCues.cues[1].text], [1, 1, "React", "কিছু না"]);
+
+const preset = presetFromSettings({ ...DEFAULT_SETTINGS, mode: "cartoon", bgm: "soft-storytelling", hints: "per-video note", tutorialUrl: "https://x.y", captions: "classic", showLogo: true });
+assert.equal(preset.mode, "cartoon");
+assert.equal(preset.bgm, "soft-storytelling");
+assert.equal(preset.captions, "classic");
+assert.equal(preset.showLogo, true);
+assert.ok(!("hints" in preset) && !("tutorialUrl" in preset) && !("assets" in preset)); // per-video fields are not part of a preset
+assert.equal(Object.keys(preset).length, PRESET_KEYS.length);
+console.log("ok: chunk planning, auto-replace dictionary, studio presets");
+
+// ---- subtitle themes + style DNA + templates
+import { applyStyleDna, dnaFromMeasure, dominantColors, normalizeDna, pacingFromCuts, parseCutTimes, parseStoredDna, summarizePalette } from "../remotion/engine/styledna.ts";
+import { blueprintFromPlan, fillPromptBody, fillSkeleton, skeletonFromBlueprint } from "../remotion/engine/template.ts";
+import { effectiveCaptions } from "../lib/settings.ts";
+
+const legacy = sanitizeSettings({ captions: "none" });
+assert.equal(legacy.captionsOn, false); // old projects stored OFF as a style
+assert.equal(effectiveCaptions(legacy), "none");
+assert.equal(effectiveCaptions(sanitizeSettings({ captions: "pill", captionsOn: true })), "pill");
+assert.equal(sanitizeSettings({ captionSize: 9 }).captionSize, 1.6);
+assert.equal(sanitizeSettings({ captionSize: "x" }).captionSize, 1);
+assert.equal(sanitizeSettings({ captionPosition: "top" }).captionPosition, "bottom");
+assert.equal(sanitizeSettings({ captions: "glow" }).captions, "glow");
+
+// median-cut: 70% navy + 30% orange pixels
+const px: number[] = [];
+for (let i = 0; i < 700; i++) px.push(10, 20, 80);
+for (let i = 0; i < 300; i++) px.push(240, 120, 20);
+const dom = dominantColors(px, 3);
+assert.equal(dom[0], "#0A1450"); // most common first
+assert.equal(dom[1], "#F07814");
+const sum = summarizePalette(dom);
+assert.equal(sum.palette[0], "#0A1450"); // darkest first
+assert.equal(sum.saturation, "vivid");
+assert.deepEqual(parseCutTimes(["foo", "[Parsed_showinfo_1] n: 0 pts: 1 pts_time:2.5 pos: 3", "pts_time:7.25"]), [2.5, 7.25]);
+assert.deepEqual(pacingFromCuts([2.5, 5, 7.5], 10), { cuts: 3, avgShotSec: 2.5, pacing: "medium" });
+assert.equal(pacingFromCuts([1, 2, 3, 4, 5, 6, 7, 8, 9], 10).pacing, "fast");
+assert.equal(pacingFromCuts([], 30).pacing, "slow");
+
+const measure = { durationSec: 30, width: 1920, height: 1080, cuts: 9, avgShotSec: 3, pacing: "medium" as const, palette: ["#0A1450", "#F07814"], brightness: "dark" as const, saturation: "vivid" as const };
+const baseDna = dnaFromMeasure("Ref", measure);
+assert.equal(baseDna.look.accent, "#F07814"); // most saturated palette colour
+const dna = normalizeDna({ vibe: "neon tech", colors: ["#101030", "bad", "#7C3AED", "#22D3EE"], accent: "#22d3ee", transitions: ["zoom", "nope", "wipe"], captionStyle: "glow", sceneSeconds: 4.26, characterSide: null, zoomStyle: "punchy", bgs: ["grid", "x"] }, "Ref", measure);
+assert.deepEqual(dna.look.colors, ["#101030", "#7C3AED", "#22D3EE"]); // invalid colour skipped
+assert.equal(dna.look.accent, "#22D3EE");
+assert.deepEqual(dna.look.transitions, ["zoom", "wipe"]);
+assert.deepEqual(dna.look.bgs, ["grid"]);
+assert.equal(dna.look.captionStyle, "glow");
+assert.equal(dna.look.sceneSeconds, 4.3);
+assert.equal(dna.look.characterSide, null);
+assert.deepEqual(normalizeDna("garbage", "Ref", measure), baseDna); // unusable reply -> measured defaults
+assert.deepEqual(parseStoredDna(JSON.parse(JSON.stringify(dna)))?.look, dna.look); // survives save/load
+assert.equal(parseStoredDna({ nope: 1 }), null);
+const styled = applyStyleDna(lplan, dna);
+assert.equal(styled.accent, "#22D3EE");
+assert.ok(styled.scenes.every((x) => x.colors?.length === 3));
+assert.equal(styled.scenes[1].transition, "zoom");
+assert.equal(styled.scenes[2].transition, "wipe");
+assert.equal(styled.scenes[0].transition, lplan.scenes[0].transition); // first scene keeps its entrance
+assert.deepEqual(styled.scenes.map((x) => x.elements), lplan.scenes.map((x) => x.elements)); // content untouched
+
+// template blueprint: pacing as ratios, no text, then re-mapped onto a different voice
+const tplPlan = normalizePlan({ accent: "#FBBF24", character: "tech-mentor", scenes: [
+  { id: "a", fromCue: 1, bg: "grid", colors: ["#111111", "#222222", "#333333"], transition: "zoom", character: { emotion: "happy", side: "left" }, elements: [{ type: "title", text: "গোপন লেখা", sub: "আরও গোপন" }] },
+  { id: "b", fromCue: 11, bg: "particles", elements: [{ type: "list", items: ["এক", "দুই", "তিন"] }, { type: "chart", chart: "bar", values: [1, 2, 3, 4], unit: "%" }], zoom: [{ at: 50, x: 0.5, y: 0.5, scale: 1.5, hold: 1 }] },
+  { id: "c", fromCue: 21, elements: [{ type: "icons", items: [{ icon: "star" }, { icon: "bolt" }] }] },
+] }, long.length)!;
+const bp = blueprintFromPlan(tplPlan, long, 120);
+assert.equal(bp.scenes.length, 3);
+assert.deepEqual(bp.scenes.map((x) => [x.from, x.to]), [[0, 0.3333], [0.3333, 0.6667], [0.6667, 1]]); // cue 11 starts at 40 s, cue 21 at 80 s of 120 s
+assert.deepEqual(bp.scenes[0].slots, [{ type: "title", hasSub: true }]);
+assert.deepEqual(bp.scenes[1].slots, [{ type: "list", count: 3 }, { type: "chart", chart: "bar", count: 4, unit: "%" }]);
+assert.ok(!JSON.stringify(bp).includes("গোপন") && !JSON.stringify(bp).includes("এক")); // all text stripped
+assert.equal(bp.scenes[1].zoom?.[0].at, 0.4167);
+const newCues = Array.from({ length: 12 }, (_, i) => ({ start: i * 5, end: i * 5 + 4.5, text: `নতুন লাইন ${i + 1}` })); // a 60 s voice
+const skel = skeletonFromBlueprint(bp, newCues, 60);
+assert.deepEqual(skel.scenes.map((x) => x.fromCue), [1, 5, 9]); // 1/3 and 2/3 of 60 s = 20 s, 40 s
+assert.equal(skel.scenes[0].bg, "grid");
+assert.equal(skel.scenes[0].transition, "zoom");
+assert.equal(skel.scenes[1].zoom?.[0].at, 25); // 0.4167 * 60
+assert.equal(skel.accent, "#FBBF24");
+assert.deepEqual(normalizePlan(skel, newCues.length)?.scenes.length, 3); // placeholders are a valid plan
+assert.ok(fillPromptBody(skel, newCues).includes("s2|cues 5-8|list(3), chart(bar,4,%)"));
+const filled = fillSkeleton(skel, { scenes: [{ id: "s1", elements: [{ type: "title", text: "নতুন শিরোনাম", sub: "উপশিরোনাম" }], bg: "grid" }, { id: "s2", elements: [{ type: "list", items: ["ক", "খ", "গ"] }] }, { id: "s9", elements: [] }] }, newCues);
+assert.deepEqual(filled.scenes[0].elements, [{ type: "title", text: "নতুন শিরোনাম", sub: "উপশিরোনাম" }]);
+assert.equal(filled.scenes[1].fromCue, 5); // structure always from the skeleton
+assert.equal(filled.scenes[2].elements[0].type, "icons" === filled.scenes[2].elements[0].type ? "icons" : "title"); // skipped scene falls back
+assert.equal((filled.scenes[2].elements[0] as { text: string }).text, "নতুন লাইন 9"); // fallback title = first words of its cue
+console.log("ok: subtitle themes, style DNA, template blueprint + skeleton");
+const skel2 = skeletonFromBlueprint(bp, [{ start: 0, end: 3.5, text: "a" }, { start: 3.7, end: 6, text: "b" }, { start: 6.5, end: 8, text: "c" }, { start: 8.8, end: 11, text: "d" }, { start: 11.9, end: 13, text: "e" }], 13.2);
+assert.deepEqual(skel2.scenes.map((x) => x.fromCue), [1, 2, 4]); // 1/3 of 13.2 s = 4.5 s -> cue at 3.7 s (0.8 s away) beats the one at 6.5 s; 2/3 = 8.8 s -> exact
+console.log("ok: template maps to the nearest cue");

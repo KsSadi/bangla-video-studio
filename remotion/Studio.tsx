@@ -11,7 +11,7 @@ import { GeneratedVideo } from "./generated/Video";
 import { KineticSubtitles } from "./library";
 import { BENGALI_FONT_STACK, useTime } from "./lib/kit";
 import { sfxPlan, speaking } from "./sfx-plan";
-import { SFX_FILES, totalSeconds, type BrandProps, type Cue, type VideoProps } from "./lib/types";
+import { SFX_FILES, totalSeconds, type BrandProps, type Cue, type SafeZone, type VideoProps } from "./lib/types";
 
 const CLAMP = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
@@ -31,13 +31,30 @@ const Bgm: React.FC<{ src: string; volume: number; cues: Cue[]; total: number }>
   );
 };
 
-const Watermark: React.FC<{ brand: BrandProps }> = ({ brand }) => {
+/** Shorts hook: bold Bengali line in the top safe zone for the first seconds. */
+const HookTitle: React.FC<{ text: string; accent: string; safe: SafeZone }> = ({ text, accent, safe }) => {
+  const frame = useCurrentFrame();
+  const { fps, width, height } = useVideoConfig();
+  const t = frame / fps;
+  const p = spring({ frame: frame - 0.15 * fps, fps, config: { damping: 14, stiffness: 150 } });
+  const out = interpolate(t, [3.2, 3.8], [1, 0], CLAMP);
+  const size = Math.round(width * 0.058);
+  return (
+    <div style={{ position: "absolute", left: width * safe.left, right: width * safe.right, top: height * (safe.top + 0.005), display: "flex", justifyContent: "center", opacity: Math.min(1, p * 1.4) * out, translate: `0px ${(1 - p) * -40}px`, scale: String(0.85 + 0.15 * p) }}>
+      <div lang="bn" style={{ fontFamily: BENGALI_FONT_STACK, fontWeight: 700, fontSize: size, lineHeight: 1.4, textAlign: "center", color: "#111", background: accent, padding: "0.2em 0.7em", borderRadius: size * 0.5, boxShadow: "0 10px 30px rgba(0,0,0,0.35)" }}>
+        {text}
+      </div>
+    </div>
+  );
+};
+
+const Watermark: React.FC<{ brand: BrandProps; safe?: SafeZone }> = ({ brand, safe }) => {
   const t = useTime();
-  const { width } = useVideoConfig();
+  const { width, height } = useVideoConfig();
   const o = interpolate(t, [0.4, 1.0], [0, 0.9], CLAMP);
   const size = width * 0.065;
   return (
-    <div style={{ position: "absolute", top: width * 0.025, right: width * 0.025, opacity: o, display: "flex", alignItems: "center", gap: size * 0.18 }}>
+    <div style={{ position: "absolute", top: safe ? height * safe.top * 0.45 : width * 0.025, ...(safe ? { left: width * safe.left } : { right: width * 0.025 }), opacity: o, display: "flex", alignItems: "center", gap: size * 0.18 }}>
       {brand.logoSrc ? (
         <Img src={staticFile(brand.logoSrc)} style={{ height: size, width: "auto", maxWidth: size * 3, objectFit: "contain", filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.5))" }} />
       ) : (
@@ -102,8 +119,9 @@ export const Studio: React.FC<VideoProps> = (props) => {
     <AbsoluteFill style={{ background: "#000" }}>
       <Sequence durationInFrames={voiceFrames} name="Generated video">
         {props.plan ? <SceneEngine {...props} plan={props.plan} /> : <GeneratedVideo {...props} />}
-        {props.captionStyle && props.captionStyle !== "none" ? <KineticSubtitles cues={props.cues} mode={props.captionStyle} accent={brand?.primary} /> : null}
-        {brand?.showLogo ? <Watermark brand={brand} /> : null}
+        {props.captionStyle && props.captionStyle !== "none" ? <KineticSubtitles cues={props.cues} mode={props.captionStyle} accent={props.plan?.accent ?? brand?.primary} accent2={brand?.secondary} safe={props.safeZone} opts={props.captionOpts} /> : null}
+        {brand?.showLogo ? <Watermark brand={brand} safe={props.safeZone} /> : null}
+        {props.hookTitle && props.safeZone ? <HookTitle text={props.hookTitle} accent={props.plan?.accent ?? brand?.primary ?? "#FBBF24"} safe={props.safeZone} /> : null}
       </Sequence>
       {brand?.outro ? (
         <Sequence from={voiceFrames} durationInFrames={Math.max(1, Math.round(total * fps) - voiceFrames)} name="Outro">

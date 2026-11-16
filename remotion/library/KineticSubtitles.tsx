@@ -4,6 +4,6 @@
  */
 import React from "react";
 import { StudioCaptions } from "../lib/kit";
-import type { CaptionStyle, Cue } from "../lib/types";
+import type { CaptionOpts, CaptionStyle, Cue, SafeZone } from "../lib/types";
 
-export const KineticSubtitles: React.FC<{ cues: Cue[]; mode?: CaptionStyle; accent?: string }> = ({ cues, mode = "kinetic", accent }) => <StudioCaptions cues={cues} style={mode} accent={accent} />;
+export const KineticSubtitles: React.FC<{ cues: Cue[]; mode?: CaptionStyle; accent?: string; accent2?: string; safe?: SafeZone; opts?: CaptionOpts }> = ({ cues, mode = "kinetic", accent, accent2, safe, opts }) => <StudioCaptions cues={cues} style={mode} accent={accent} accent2={accent2} safe={safe} opts={opts} />;
