@@ -51,6 +51,9 @@ export type VideoProps = {
   bgmVolume?: number;
   sfx?: boolean; // UI + transition sound effects (synthesized audio/sfx-*.wav)
   media?: MediaAsset[]; // optional B-roll for the generated video to place
+  /** scene-plan.json (validated). Present = the JSON scene engine renders the video; absent = generated/Video.tsx (custom fallback). */
+  plan?: import("../engine/plan").ScenePlan;
+  lipsyncSrc?: string; // small mono copy of the voice used for waveform lip-sync
 };
 
 /** Total composition length in seconds: voice + optional outro. */

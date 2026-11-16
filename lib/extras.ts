@@ -6,10 +6,11 @@
 import fs from "node:fs";
 import path from "node:path";
 import { brandLogoPath, loadBrand } from "@/lib/brand";
-import { claude, ffmpeg, node, remotionBrowserArgs } from "@/lib/exec";
+import { claudeJson, ffmpeg, node, remotionBrowserArgs } from "@/lib/exec";
 import type { SeoPack, StudioSettings } from "@/lib/settings";
 import { buildChapters } from "@/lib/chapters";
-import { ROOT, jobDir, log, publicDir, thumbnailPath, type Job } from "@/lib/store";
+import { buildSeoPrompt } from "@/lib/prompts";
+import { jobDir, log, publicDir, thumbnailPath, type Job } from "@/lib/store";
 import type { Cue } from "@/remotion/lib/types";
 
 const strList = (v: unknown, max: number, len = 200) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()).map((x) => x.trim().slice(0, len)).slice(0, max) : []);
@@ -19,27 +20,10 @@ export async function makeExtras(job: Job, o: { settings: StudioSettings; cues: 
   const dir = jobDir(job.id);
   const pub = publicDir(job.id);
   const brand = loadBrand();
-  const draft = path.join(dir, "seo-draft.json");
-  fs.rmSync(draft, { force: true });
-
   let raw: Record<string, unknown> = {};
   try {
-    await claude(
-      job,
-      [
-        "You write YouTube/social metadata for a Bengali video. Work only inside this project directory. You cannot run commands.",
-        `Read ${path.relative(ROOT, path.join(dir, "subtitles.srt")).replace(/\\/g, "/")} (the Bengali narration, numbered cues).`,
-        `Write ONE file, ${path.relative(ROOT, draft).replace(/\\/g, "/")}, containing only valid JSON with exactly these keys:`,
-        '{ "headline": "bold thumbnail headline in Bengali, 2-6 words, taken from or faithful to the script",',
-        '  "titlesBn": ["3 catchy Bengali titles, max 70 chars"], "titlesEn": ["3 catchy English titles, max 70 chars"],',
-        '  "descriptionBn": "2-3 short Bengali paragraphs", "descriptionEn": "2-3 short English paragraphs",',
-        '  "hashtags": ["8-12 hashtags with #, mix Bengali and English"],',
-        '  "chapters": [{ "cue": <1-based cue number where a new topic starts>, "title": "short Bengali chapter title" }] }',
-        "Chapters: 4-8 entries, first is cue 1, topics must be at least 10 seconds apart. Give cue NUMBERS only, never timestamps.",
-        "Use only facts from the script. Do not write any other file.",
-      ].join("\n"),
-    );
-    raw = JSON.parse(fs.readFileSync(draft, "utf8"));
+    // light task: one no-tools turn on the light model (Haiku in Token Saver mode)
+    raw = (await claudeJson(job, buildSeoPrompt(o.cues), "light")) as Record<string, unknown>;
   } catch (e) {
     log(job, `YouTube pack: Claude step failed (${(e as Error).message.split("\n")[0]}); using script-based fallbacks.`);
   }

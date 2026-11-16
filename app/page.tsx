@@ -449,6 +449,21 @@ export default function Studio() {
           <Toggle label="Generate YouTube/Social Metadata & Chapters" desc="Bengali/English titles, description, hashtags and 00:00 chapters from your SRT. Runs on Final HD renders." checked={settings.metadata} onChange={(v) => patch({ metadata: v })} />
         </div>
 
+        <div className="mb-4 grid gap-4 rounded-xl border border-line bg-raised p-4 sm:grid-cols-2">
+          <Toggle
+            label="Token Saver Mode (Haiku/Sonnet Hybrid)"
+            desc={settings.tokenSaver ? "Light tasks (metadata, chapters, single-scene edits) run on Haiku; scene planning on Sonnet. Saves your Claude Code usage." : "Max Quality Mode: every task runs on your Claude Code default model."}
+            checked={settings.tokenSaver}
+            onChange={(v) => patch({ tokenSaver: v })}
+          />
+          <Toggle
+            label="Custom one-off TSX visual"
+            desc={settings.engine === "custom" ? "Claude writes bespoke React code for this video. Uses many times more tokens and is slower." : "OFF (recommended): Claude only writes a compact scene-plan.json; the pre-built component library renders it."}
+            checked={settings.engine === "custom"}
+            onChange={(v) => patch({ engine: v ? "custom" : "json" })}
+          />
+        </div>
+
         {versions.length > 0 && (
           <div className="mb-4">
             <Toggle label="Reuse the current design (no AI, just re-render)" desc={`Re-renders v${currentVersion?.n} with the latest subtitles and toggles at the quality you pick. Off = Claude designs a brand-new video.`} checked={reuse} onChange={setReuse} />

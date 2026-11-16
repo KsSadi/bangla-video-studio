@@ -1,19 +1,17 @@
-# Skill: App / Website Tutorial (Playwright recording + Remotion wrap)
+# Skill: App / Website Tutorial (Playwright recording)
 
-Read `remotion-core.md` first. In this mode you write **two** files:
+**Default (JSON scene engine): you write exactly ONE file, `projects/<id>/record.mjs`.** The studio builds the
+video around the recording by itself (browser frame, auto-zoom on your logged clicks via SmartZoom, presenter
+with waveform lip-sync, captions). Ignore the `Video.tsx` sections below unless the prompt explicitly says
+"custom TSX".
 
-1. `jobs/<id>/record.mjs` – a Playwright script that performs the actions the Bengali voice describes.
-2. `remotion/generated/Video.tsx` – the composition that wraps the recording.
-
-The studio then runs `record.mjs`, converts the capture to `recording.mp4`, and passes `recordingSrc` and
-`events` (logged clicks with coordinates) to the composition as props. You never see the recording, so the
-composition must be **data-driven by `events`**, not by guessed coordinates.
-
-(Recording patterns adapted from the `playwright-recording` skill in `_reference_skills/`.)
+The studio runs `record.mjs`, converts the capture to `recording.mp4`, and passes `recordingSrc` and `events`
+(logged clicks with coordinates) to the renderer. Zoom and highlights come from those events, so use the
+recorder helpers for every action.
 
 ## 1. Map the voice to actions
 
-Read the SRT and `jobs/<id>/page-map.json` (interactive elements of the first page: tag, text, id, name,
+Read the SRT and `projects/<id>/page-map.json` (interactive elements of the first page: tag, text, id, name,
 placeholder, ariaLabel, href, y). Build an action table as a comment at the top of `record.mjs`:
 
 ```js

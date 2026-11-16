@@ -85,7 +85,7 @@ export function Player({ jobId, versions, selected, onSelect, revisions, portrai
         }}
       >
         <h3 className="mb-1 font-semibold">Request Changes / Revise Video</h3>
-        <p className="mb-3 text-xs text-muted">Describe the change in Bengali or English. Claude edits only what you ask for, starting from <b>v{cur.n}</b>, and renders a new version. Older versions are kept.</p>
+        <p className="mb-3 text-xs text-muted">Describe the change in Bengali or English. Name the moment (<b>0:15</b>, <b>১৫ সেকেন্ডে</b> or <b>scene 3</b>) and only that scene is sent to Claude, which costs very few tokens. Starts from <b>v{cur.n}</b>; older versions are kept.</p>
         <div className="mb-2 flex flex-wrap gap-1.5">
           {CHIPS.map((c) => (
             <button type="button" key={c} lang={/[ঀ-৿]/.test(c) ? "bn" : "en"} onClick={() => setFeedback((f) => (f.trim() ? `${f.trim()}\n${c}` : c))} className="rounded-full border border-line bg-ink px-3 py-1 text-xs hover:border-accent hover:text-accent">

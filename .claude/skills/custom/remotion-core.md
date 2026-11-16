@@ -1,4 +1,9 @@
-# Remotion Core Rules (mandatory for every video mode)
+# Remotion Core Rules (custom one-off TSX fallback only)
+
+> The studio normally renders videos from `scene-plan.json` (see `../scene-plan.md`) with no generated code.
+> This file applies only when the user switched on "Custom one-off TSX". You may also import the pre-built
+> library from `../library` (`TalkingCharacter`, `SceneBackground`, `IconSpotlight`, `IconRow`, `DataChart`,
+> `SmartZoomContainer`) instead of re-implementing those pieces.
 
 Synthesized from `_reference_skills/` (official `remotion-dev/skills` rule files: timing, sequencing,
 transitions, local-fonts, arabic-text, video-layout; `digitalsamba/claude-code-video-toolkit` motion-craft
@@ -23,7 +28,7 @@ export const GeneratedVideo: React.FC<VideoProps> = ({ audioSrc, cues, durationS
 
 - The export name and props type never change. `Root.tsx` sets size, fps (30) and duration from props.
 - Always render `{audioSrc ? <VoiceAudio src={audioSrc} /> : null}` exactly once, at the top level, never inside a `<Sequence>` that starts late.
-- Allowed imports: `react`, `remotion`, `@remotion/transitions` (+ `/fade`, `/slide`, `/wipe`), `@remotion/media`, `../lib/kit`, `../lib/types`, `../characters/Character`. Nothing else is installed.
+- Allowed imports: `react`, `remotion`, `../library`, `lucide-react`, `@remotion/transitions` (+ `/fade`, `/slide`, `/wipe`), `@remotion/media`, `../lib/kit`, `../lib/types`, `../characters/Character`. Nothing else is installed.
 - No network: no remote images, no Google Fonts, no `fetch`. Draw visuals with inline SVG, divs and CSS gradients.
 - You may define as many helper components as you need inside the same file.
 

@@ -1,13 +1,15 @@
 /**
  * "Main" composition = the generated video plus studio-owned layers. Every layer is optional and driven by
  * VideoProps flags (absent/off = not rendered): captions, corner logo, BGM (auto-ducked), SFX, subscribe outro.
- * Claude only writes remotion/generated/Video.tsx; these layers never depend on what it generates.
+ * The video itself is the JSON scene engine (props.plan = scene-plan.json) or, as a fallback, custom generated/Video.tsx.
  */
 import React from "react";
 import { AbsoluteFill, Easing, Img, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Audio } from "@remotion/media";
+import { SceneEngine } from "./engine/SceneEngine";
 import { GeneratedVideo } from "./generated/Video";
-import { BENGALI_FONT_STACK, StudioCaptions, useTime } from "./lib/kit";
+import { KineticSubtitles } from "./library";
+import { BENGALI_FONT_STACK, useTime } from "./lib/kit";
 import { sfxPlan, speaking } from "./sfx-plan";
 import { SFX_FILES, totalSeconds, type BrandProps, type Cue, type VideoProps } from "./lib/types";
 
@@ -99,8 +101,8 @@ export const Studio: React.FC<VideoProps> = (props) => {
   return (
     <AbsoluteFill style={{ background: "#000" }}>
       <Sequence durationInFrames={voiceFrames} name="Generated video">
-        <GeneratedVideo {...props} />
-        {props.captionStyle && props.captionStyle !== "none" ? <StudioCaptions cues={props.cues} style={props.captionStyle} accent={brand?.primary} /> : null}
+        {props.plan ? <SceneEngine {...props} plan={props.plan} /> : <GeneratedVideo {...props} />}
+        {props.captionStyle && props.captionStyle !== "none" ? <KineticSubtitles cues={props.cues} mode={props.captionStyle} accent={brand?.primary} /> : null}
         {brand?.showLogo ? <Watermark brand={brand} /> : null}
       </Sequence>
       {brand?.outro ? (

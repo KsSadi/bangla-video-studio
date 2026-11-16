@@ -47,6 +47,11 @@ export type StudioSettings = {
   // 9 extras
   thumbnail: boolean;
   metadata: boolean;
+  // engine + tokens
+  /** "json": Claude writes a compact scene-plan.json rendered by the pre-built library (default, cheapest, most reliable). "custom": Claude writes one-off TSX. */
+  engine: "json" | "custom";
+  /** Token Saver (Haiku/Sonnet hybrid) vs Max Quality (your default model for everything). */
+  tokenSaver: boolean;
 };
 
 export const DEFAULT_SETTINGS: StudioSettings = {
@@ -69,6 +74,8 @@ export const DEFAULT_SETTINGS: StudioSettings = {
   outro: false,
   thumbnail: false,
   metadata: false,
+  engine: "json",
+  tokenSaver: true,
 };
 
 /** Persistent brand kit (shared by every project). */
@@ -115,10 +122,12 @@ export function sanitizeSettings(raw: unknown, base: StudioSettings = DEFAULT_SE
     outro: bool(r.outro, base.outro),
     thumbnail: bool(r.thumbnail, base.thumbnail),
     metadata: bool(r.metadata, base.metadata),
+    engine: r.engine === "custom" ? "custom" : r.engine === "json" ? "json" : base.engine,
+    tokenSaver: bool(r.tokenSaver, base.tokenSaver),
   };
 }
 
-export type VersionInfo = { n: number; quality: Quality; label: string; createdAt: string; size: number };
+export type VersionInfo = { n: number; quality: Quality; label: string; createdAt: string; size: number; engine?: "json" | "custom" };
 export type RevisionInfo = { n: number; feedback: string; version: number; createdAt: string };
 export type ChapterInfo = { time: string; title: string };
 export type SeoPack = {

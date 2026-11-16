@@ -158,3 +158,26 @@ Fonts: Hind Siliguri and Noto Sans Bengali (SIL Open Font License). Remotion has
 | Thumbnail + YouTube pack | Step 5 | Run on Final HD renders; chapters are computed from the SRT, never by the model |
 
 Offline Remotion: set `REMOTION_BROWSER_EXECUTABLE` to a Chrome/Chromium path to skip Remotion's browser download.
+
+
+## Architecture: component library + JSON scene engine (low-token by design)
+
+```
+subtitles ─▶ claude -p (ONE turn, no tools) ─▶ scene-plan.json ─▶ remotion/engine/SceneEngine ─▶ MP4
+                                                   ▲ validated by remotion/engine/plan.ts
+```
+
+- **`remotion/library/`** holds the pre-built components: `TalkingCharacter` (waveform lip-sync via
+  `@remotion/media-utils`, blinking, emotions), `SceneBackground`, `IconSpotlight` / `IconRow` (lucide-react +
+  built-in illustrations), `DataChart`, `SmartZoomContainer`, `KineticSubtitles`.
+- **`scene-plan.json`** is all Claude writes: scenes keyed to subtitle cue numbers, each picking a background,
+  transition, character emotion and 1-3 elements (title, icons, illustration, list, chart, media). The guide the
+  model sees is `.claude/skills/scene-plan.md` + `style-*.md`, inlined into the prompt (no file reads).
+- **Invalid output cannot break a render:** the plan is sanitized, unknown icons fall back, and if Claude returns
+  nothing usable a built-in automatic plan is used. Tutorial videos need no AI plan at all (only `record.mjs`).
+- **Surgical revisions:** feedback that names a moment (`0:15`, `১৫ সেকেন্ডে`, `scene 3`) sends only that scene
+  object, one neighbour and their cues; the reply is merged back by id and only that scene may change.
+- **Model routing:** Token Saver mode runs light tasks (YouTube pack, single-scene edits) on
+  `claude-haiku-4-5` and planning on `sonnet`; Max Quality uses your CLI default for everything. Override with
+  `CLAUDE_MODEL_LIGHT` / `CLAUDE_MODEL_HEAVY` / `CLAUDE_MODEL`. Token usage of every call is printed in the console.
+- **Custom one-off TSX** remains as an opt-in toggle (skills in `.claude/skills/custom/`).

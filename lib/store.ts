@@ -30,6 +30,8 @@ export type Job = {
   revisions: RevisionInfo[];
   seo?: SeoPack;
   thumbnail: boolean;
+  /** Claude tokens used by the current/last run (shown in the console so savings are visible). */
+  tokens?: { input: number; output: number };
   error?: string;
   videoReady: boolean;
 };
