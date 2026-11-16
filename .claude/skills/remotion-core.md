@@ -11,7 +11,8 @@ You write exactly one file: `remotion/generated/Video.tsx`.
 ```tsx
 import React from "react";
 import { AbsoluteFill, Sequence, interpolate, spring, Easing, useCurrentFrame, useVideoConfig } from "remotion";
-import { VoiceAudio, Captions, KineticText, Presenter, GradientBackground, BrowserRecording,
+import { VoiceAudio, KineticText, Presenter, GradientBackground, BrowserRecording,
+  CameraDrift, Parallax, MediaFrame, SPRING, springIn,
   useTime, activeCueIndex, mouthOpen, fadeInOut, enter, splitWords, splitGraphemes,
   BENGALI_FONT_STACK, FONT_HEADING, FONT_BODY, EASE_OUT } from "../lib/kit";
 import { Character, CHARACTER_STYLES, type CharacterStyle, type Expression } from "../characters/Character";
@@ -85,8 +86,13 @@ export const GeneratedVideo: React.FC<VideoProps> = ({ audioSrc, cues, durationS
   lightness. One accent colour for the thing being talked about.
 - Avoid the generated look: dark void with small floating things, glow/neon/particles as decoration,
   everything centred, everything fading in at once.
-- Captions: include `<Captions cues={cues} />` unless the scene already shows the full spoken sentence as
-  kinetic text. Keep the caption zone (bottom ~18%) free of other content.
+- Captions are **owned by the studio**. The user picks kinetic / classic / none and the studio draws them on top
+  of your video. Never draw subtitle bars or the full spoken sentence as a caption and never use `<Captions>`
+  (it is a no-op). Keep the caption zone (bottom ~18%) free of other content. When the prompt says captions are
+  OFF, carry the message with on-screen keywords from the cue text instead.
+- Other studio-owned layers (see the STUDIO LAYERS section of the job prompt): corner logo watermark (keep the
+  top-right ~12% clear), subscribe outro (appended after `durationSec`, never draw an end card), background
+  music and SFX (the only audio you render is `<VoiceAudio/>`).
 
 ## 6. Scene transitions
 
@@ -118,3 +124,44 @@ import { slide } from "@remotion/transitions/slide";
 - [ ] Works for both aspect ratios; nothing positioned off-screen in 9:16.
 - [ ] Scenes cover 0 → `durationSec` with no gaps; every `durationInFrames` is a positive integer.
 - [ ] All Bengali text uses `BENGALI_FONT_STACK`, word-level animation only.
+- [ ] No scene is static: every scene has a `CameraDrift`/`Parallax` move, spring entrances and a clean transition (section 8).
+- [ ] No `<Captions>`, no subtitle bar, no end card, no extra `<Audio>`.
+
+## 8. Cinematic 2D motion (mandatory: scenes must never look static)
+
+Every scene gets all four of these. They are cheap and make the difference between a slideshow and a film.
+
+1. **Spring physics for every arrival.** Use `spring()` (or `springIn(frame, fps, delaySec, preset)` from the kit),
+   never a linear ramp, for anything that moves, scales or rotates in. Presets (`SPRING` in the kit):
+   `smooth` (damping 200, no bounce: text, UI, opacity), `snappy` (damping 20, stiffness 200: cards, buttons),
+   `soft` (damping 26, stiffness 90, mass 1.2: big hero objects), `bouncy` (damping 12: cartoon props, stickers).
+   Stagger siblings 2-4 frames. Opacity and colour never bounce. Exits are shorter than entrances (40-50%).
+2. **Camera drift on every scene.** Wrap each scene's visual stack in
+   `<CameraDrift from={sceneStart} to={sceneEnd} push={0.05} drift={0.016} seed={sceneIndex}>…</CameraDrift>`.
+   A slow 4-7% push-in plus a gentle sideways drift, eased in-out. Use a different `seed` per scene so the
+   direction changes. Alternate push-in and pull-out (`push={-0.04}`) for rhythm. Never move the camera while a
+   headline is being read faster than ~2% over the scene; text must feel still.
+3. **Parallax depth.** Split each scene into 2-3 depth layers and wrap them in
+   `<Parallax depth={0.15}>` (background), `<Parallax depth={0.5}>` (midground, the main subject) and
+   `<Parallax depth={0.9}>` (foreground accents). Deeper layers move more. Soft blurred shapes, gradients or
+   simple SVG scenery go in the back; the subject in the middle; small props or overlapping edges in front.
+   Do not parallax the text layer's readable content more than depth 0.5.
+4. **Clean transitions between scenes.** 3-5 kinds per video, each motivated (see section 6): slide in the direction
+   of motion, wipe for a time jump, fade only for calm moments, scale/zoom-through for a reveal. Overlap the exit
+   of scene N with the entrance of scene N+1 by 8-14 frames instead of cutting. Never hard-cut to an empty frame.
+
+Also: stagger entrances (title, then subject, then supporting items), hold the hero element still once it has landed,
+keep one slow ambient motion (drifting gradient, floating shapes with `Math.sin(t)`) alive behind text, and give
+characters a small idle (breathing, blinking) which `Presenter`/`Character` already do.
+
+Forbidden for motion: CSS transitions/animations, `Math.random()`, `setTimeout`. Everything is a pure function of the frame.
+
+## 9. User media (B-roll)
+
+If the job prompt has an EXTRA MEDIA section, place every listed file with
+`<MediaFrame src="assets/<file>" kind="image|video" start={sec} end={sec} variant="browser|phone|polaroid|card" caption="…"/>`
+at the requested moment. `MediaFrame` springs in, floats subtly and springs out inside a stylish frame/mockup. Rules:
+`"0:25"` means 25 s on the voiceover clock; if no time was given, choose the cue whose words describe the asset;
+show each asset 3-6 s; pick `browser` for web screenshots, `phone` for mobile, `polaroid`/`card` for photos; keep the
+screenshot's key area visible; the scene's main text must not be covered. If there is no EXTRA MEDIA section, do not
+invent media and do not import `MediaFrame`.

@@ -17,7 +17,24 @@ export type RecEvent = {
   vh: number;
 };
 
-/** Input props the backend passes to the "Main" composition. */
+export type CaptionStyle = "kinetic" | "classic" | "none";
+
+/** User media (public/assets/…) Claude should embed in animated frames at the requested moments. */
+export type MediaAsset = { src: string; kind: "image" | "video"; instruction: string };
+
+export type BrandProps = {
+  channelName: string;
+  primary: string;
+  secondary: string;
+  logoSrc?: string; // file inside the job's public dir
+  showLogo: boolean; // corner watermark
+  outro: boolean; // animated subscribe/follow outro appended after the voice ends
+};
+
+/** Seconds the optional outro adds after the voiceover. */
+export const OUTRO_SEC = 4;
+
+/** Input props the backend passes to the "Main" composition. All studio extras are optional; absent = off. */
 export type VideoProps = {
   audioSrc: string; // file name inside the job's public dir
   cues: Cue[];
@@ -27,7 +44,20 @@ export type VideoProps = {
   character: CharacterId;
   recordingSrc?: string; // tutorial mode only
   events?: RecEvent[]; // tutorial mode only
+  fps?: number; // 30 for final renders, 15 for fast drafts (default 30)
+  captionStyle?: CaptionStyle; // drawn by the studio overlay, never by the generated video
+  brand?: BrandProps;
+  bgmSrc?: string; // background music file; the studio overlay loops and auto-ducks it
+  bgmVolume?: number;
+  sfx?: boolean; // UI + transition sound effects (synthesized audio/sfx-*.wav)
+  media?: MediaAsset[]; // optional B-roll for the generated video to place
 };
+
+/** Total composition length in seconds: voice + optional outro. */
+export const totalSeconds = (p: Pick<VideoProps, "durationSec" | "brand">) => p.durationSec + (p.brand?.outro ? OUTRO_SEC : 0);
+
+export type SfxName = "whoosh" | "pop" | "chime";
+export const SFX_FILES: Record<SfxName, string> = { whoosh: "audio/sfx-whoosh.wav", pop: "audio/sfx-pop.wav", chime: "audio/sfx-chime.wav" };
 
 /** Parse SRT text into cues. Tolerates CRLF, missing indexes and "." millisecond separators. */
 export function parseSrt(srt: string): Cue[] {

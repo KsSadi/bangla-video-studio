@@ -11,6 +11,7 @@ import {
   cancelRender,
   continueRender,
   delayRender,
+  Img,
   interpolate,
   spring,
   staticFile,
@@ -18,7 +19,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { CHARACTER_STYLES, Character, type CharacterStyle, type Expression } from "../characters/Character";
-import type { CharacterId, Cue, RecEvent } from "./types";
+import type { CaptionStyle, CharacterId, Cue, RecEvent } from "./types";
 
 // ---------- Bengali fonts (local files, never fetched from the network) ----------
 export const FONT_HEADING = "Hind Siliguri";
@@ -144,8 +145,8 @@ export const KineticText: React.FC<{
   );
 };
 
-/** Subtitle bar showing the cue being spoken. Safe-area aware; wraps long Bengali lines. */
-export const Captions: React.FC<{ cues: Cue[]; bottom?: number; fontSize?: number; style?: React.CSSProperties }> = ({ cues, bottom, fontSize, style }) => {
+/** Classic bottom subtitle bar. Safe-area aware; wraps long Bengali lines. */
+const ClassicCaption: React.FC<{ cues: Cue[]; bottom?: number; fontSize?: number; style?: React.CSSProperties }> = ({ cues, bottom, fontSize, style }) => {
   const t = useTime();
   const { width, height } = useVideoConfig();
   const i = activeCueIndex(cues, t);
@@ -172,6 +173,192 @@ export const Captions: React.FC<{ cues: Cue[]; bottom?: number; fontSize?: numbe
         }}
       >
         {c.text}
+      </div>
+    </div>
+  );
+};
+
+
+/**
+ * Kinetic captions: the spoken line pops in word by word (spring), the word being spoken is highlighted.
+ * Word timing is linear inside the cue. Words (not letters) keep Bengali conjuncts intact.
+ */
+const KineticCaption: React.FC<{ cues: Cue[]; accent: string; bottom?: number }> = ({ cues, accent, bottom }) => {
+  const t = useTime();
+  const frame = useCurrentFrame();
+  const { width, height, fps } = useVideoConfig();
+  const i = activeCueIndex(cues, t);
+  if (i < 0) return null;
+  const c = cues[i];
+  const words = splitWords(c.text);
+  const span = Math.max(0.1, c.end - c.start);
+  const exit = interpolate(t, [c.end - 0.12, c.end], [1, 0], CLAMP);
+  const fontSize = Math.round(width * (width > height ? 0.036 : 0.062));
+  const activeWord = Math.min(words.length - 1, Math.floor(((t - c.start) / span) * words.length));
+  return (
+    <div style={{ position: "absolute", left: width * 0.07, right: width * 0.07, bottom: bottom ?? height * 0.07, display: "flex", justifyContent: "center", opacity: exit }}>
+      <div lang="bn" style={{ fontFamily: BENGALI_FONT_STACK, fontWeight: 700, fontSize, lineHeight: 1.5, textAlign: "center", color: "#fff", textShadow: "0 3px 14px rgba(0,0,0,0.85), 0 0 3px rgba(0,0,0,0.9)" }}>
+        {words.map((w, k) => {
+          const p = spring({ frame: frame - (c.start + Math.min(k * 0.07, span * 0.4)) * fps, fps, config: { damping: 14, stiffness: 180 }, durationInFrames: 16 });
+          return (
+            <span key={k} style={{ display: "inline-block", marginRight: "0.26em", opacity: Math.min(1, p * 1.6), translate: `0px ${(1 - p) * 26}px`, scale: String(0.7 + 0.3 * p), color: k === activeWord ? accent : "#fff" }}>
+              {w}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+/** Studio-owned captions overlay (Main composition draws it from the UI's caption setting). */
+export const StudioCaptions: React.FC<{ cues: Cue[]; style: CaptionStyle; accent?: string }> = ({ cues, style, accent = "#FBBF24" }) =>
+  style === "kinetic" ? <KineticCaption cues={cues} accent={accent} /> : style === "classic" ? <ClassicCaption cues={cues} /> : null;
+
+/**
+ * DEPRECATED for generated videos: captions are drawn by the studio overlay according to the user's caption
+ * toggle (kinetic / classic / none). Kept as a no-op so older generated code still compiles. Do not draw captions.
+ */
+export const Captions: React.FC<{ cues: Cue[]; bottom?: number; fontSize?: number; style?: React.CSSProperties }> = () => null;
+
+// ---------- cinematic motion ----------
+/** Named spring presets. Opacity and colour never bounce: use SPRING.smooth for them. */
+export const SPRING = {
+  smooth: { damping: 200 },
+  snappy: { damping: 20, stiffness: 200 },
+  soft: { damping: 26, stiffness: 90, mass: 1.2 },
+  bouncy: { damping: 12, stiffness: 140 },
+} as const;
+
+/** 0..1 spring that starts `delay` seconds into the current sequence. */
+export const springIn = (frame: number, fps: number, delay = 0, preset: keyof typeof SPRING = "snappy") =>
+  spring({ frame: frame - delay * fps, fps, config: SPRING[preset] });
+
+/**
+ * Slow camera move for a scene: push-in plus a gentle drift, eased in/out so it never looks static.
+ * Wrap the scene's whole visual stack. `from`/`to` are seconds on the same clock as useTime() in the scene.
+ */
+export const CameraDrift: React.FC<{
+  children: React.ReactNode;
+  from: number;
+  to: number;
+  /** Extra zoom at the end of the move (0.06 = 6%). */
+  push?: number;
+  /** Drift distance as a fraction of the width. */
+  drift?: number;
+  /** Different seeds give different drift directions per scene. */
+  seed?: number;
+  style?: React.CSSProperties;
+}> = ({ children, from, to, push = 0.06, drift = 0.018, seed = 0, style }) => {
+  const t = useTime();
+  const { width } = useVideoConfig();
+  const p = interpolate(t, [from, to], [0, 1], { ...CLAMP, easing: Easing.inOut(Easing.sin) });
+  const angle = seed * 2.4;
+  return (
+    <AbsoluteFill style={{ scale: String(1 + push * p), translate: `${Math.cos(angle) * drift * width * p}px ${Math.sin(angle) * drift * width * 0.6 * p}px`, ...style }}>
+      {children}
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * Depth layer: moves and scales slightly with time, deeper layers (depth near 1) move more than the
+ * background (depth near 0). Stack 2-3 layers inside a scene for parallax.
+ */
+export const Parallax: React.FC<{ children: React.ReactNode; depth?: number; seed?: number; style?: React.CSSProperties }> = ({ children, depth = 0.5, seed = 0, style }) => {
+  const t = useTime();
+  const { width, height } = useVideoConfig();
+  return (
+    <AbsoluteFill
+      style={{
+        translate: `${Math.sin(t * 0.4 + seed) * depth * width * 0.014}px ${Math.cos(t * 0.33 + seed) * depth * height * 0.01}px`,
+        scale: String(1 + depth * 0.025 + Math.sin(t * 0.2 + seed) * depth * 0.008),
+        ...style,
+      }}
+    >
+      {children}
+    </AbsoluteFill>
+  );
+};
+
+/**
+ * User media (screenshot / short clip) inside an animated frame. Springs in at `start`, floats gently while
+ * visible, springs out before `end`. `src` is MediaAsset.src (a file under assets/ in the job's public dir).
+ */
+export const MediaFrame: React.FC<{
+  src: string;
+  kind?: "image" | "video";
+  start: number;
+  end: number;
+  variant?: "browser" | "phone" | "polaroid" | "card";
+  caption?: string;
+  accent?: string;
+  /** Box the frame fits into, as fractions of the screen. */
+  box?: { x: number; y: number; w: number; h: number };
+}> = ({ src, kind = "image", start, end, variant = "browser", caption, accent = "#FBBF24", box = { x: 0.1, y: 0.08, w: 0.8, h: 0.62 } }) => {
+  const frame = useCurrentFrame();
+  const t = useTime();
+  const { fps, width, height } = useVideoConfig();
+  if (t < start - 0.05 || t > end + 0.6) return null;
+  const inP = spring({ frame: frame - start * fps, fps, config: SPRING.bouncy, durationInFrames: 22 });
+  const outP = interpolate(t, [end - 0.3, end], [1, 0], { ...CLAMP, easing: Easing.in(Easing.poly(4)) });
+  const p = inP * outP;
+  const bw = width * box.w;
+  const bh = height * box.h;
+  const radius = Math.round(width * 0.012);
+  const content =
+    kind === "video" ? (
+      <Video src={staticFile(src)} muted style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    ) : (
+      <Img src={staticFile(src)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+    );
+  const chrome = variant === "browser" ? radius * 3.2 : 0;
+  const pad = variant === "polaroid" ? radius * 1.4 : variant === "phone" ? radius * 1.1 : variant === "card" ? radius * 0.6 : 0;
+  const bottomPad = variant === "polaroid" ? radius * 5 : pad;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: width * box.x,
+        top: height * box.y,
+        width: bw,
+        height: bh,
+        display: "grid",
+        placeItems: "center",
+        opacity: Math.min(1, p * 1.5),
+        scale: String(0.75 + 0.25 * p),
+        translate: `0px ${(1 - p) * 60 + Math.sin(t * 1.1) * height * 0.006}px`,
+        rotate: `${(variant === "polaroid" ? -3 : 0) * p + Math.sin(t * 0.7) * 0.4}deg`,
+      }}
+    >
+      <div
+        style={{
+          width: variant === "phone" ? Math.min(bw, bh * 0.52) : "100%",
+          height: "100%",
+          background: variant === "polaroid" ? "#fff" : variant === "phone" ? "#0b0b12" : "#fff",
+          borderRadius: variant === "phone" ? radius * 3 : radius,
+          boxShadow: "0 30px 80px rgba(0,0,0,0.45), 0 4px 14px rgba(0,0,0,0.3)",
+          border: variant === "phone" ? `${radius * 0.5}px solid #1c1c28` : variant === "card" ? `3px solid ${accent}` : undefined,
+          padding: `${chrome + pad}px ${pad}px ${bottomPad}px`,
+          position: "relative",
+          overflow: "hidden",
+          boxSizing: "border-box",
+        }}
+      >
+        {variant === "browser" && (
+          <div style={{ position: "absolute", left: 0, right: 0, top: 0, height: chrome, background: "#E8EAF0", display: "flex", alignItems: "center", gap: radius * 0.7, padding: `0 ${radius * 1.2}px` }}>
+            {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
+              <span key={c} style={{ width: radius * 1.1, height: radius * 1.1, borderRadius: "50%", background: c }} />
+            ))}
+            <span style={{ marginLeft: radius, flex: 1, height: chrome * 0.5, borderRadius: chrome, background: "#fff" }} />
+          </div>
+        )}
+        <div style={{ width: "100%", height: "100%", overflow: "hidden", borderRadius: variant === "phone" ? radius * 2 : variant === "polaroid" ? radius * 0.4 : 0 }}>{content}</div>
+        {caption && (
+          <div lang="bn" style={{ position: "absolute", left: 0, right: 0, bottom: variant === "polaroid" ? radius * 1.2 : radius, textAlign: "center", fontFamily: BENGALI_FONT_STACK, fontWeight: 600, fontSize: Math.round(width * 0.02), lineHeight: 1.5, color: variant === "polaroid" ? "#222" : "#fff", textShadow: variant === "polaroid" ? undefined : "0 2px 10px rgba(0,0,0,0.8)" }}>
+            {caption}
+          </div>
+        )}
       </div>
     </div>
   );
