@@ -1,9 +1,7 @@
 # Skill: App / Website Tutorial (Playwright recording)
 
-**Default (JSON scene engine): you write exactly ONE file, `projects/<id>/record.mjs`.** The studio builds the
-video around the recording by itself (browser frame, auto-zoom on your logged clicks via SmartZoom, presenter
-with waveform lip-sync, captions). Ignore the `Video.tsx` sections below unless the prompt explicitly says
-"custom TSX".
+**You write exactly ONE file, `projects/<id>/record.mjs`.** The studio builds the video around the recording by
+itself (browser frame, auto-zoom on your logged clicks via SmartZoom, captions).
 
 The studio runs `record.mjs`, converts the capture to `recording.mp4`, and passes `recordingSrc` and `events`
 (logged clicks with coordinates) to the renderer. Zoom and highlights come from those events, so use the
@@ -80,51 +78,9 @@ Rules:
   describes that step. When unsure, `h.highlight` the control instead of clicking it.
 - Plain ESM JavaScript (`.mjs`), no TypeScript syntax, no extra imports beyond `../../scripts/recorder.mjs`.
 
-## 3. `Video.tsx`: wrap the recording
-
-`<BrowserRecording src={recordingSrc} events={events} />` (from the kit) already provides: 16:9 browser frame,
-**auto-zoom on every click/type/highlight** (ease in before the action, hold, ease out), **click ripples**, and
-**highlight boxes** around the target element. Give it a width via its parent; it keeps 16:9.
-
-Guard for the baseline case: `if (!recordingSrc) { /* render a simple title + captions fallback */ }`.
-
-Layout:
-
-- **16:9:** recording fills ~88-92% of the width, slightly above centre, on a calm background (flat field or
-  `GradientBackground` with muted colours); captions in the bottom band.
-- **9:16:** recording full width in the upper-middle (it is 16:9, so it uses ~32% of the height); above it a step
-  title; below it the presenter and captions.
-
-Additions you build on top (all timed from `cues` and `events`):
-
-- **Intro card** (0 → first cue or ~2 s): what the tutorial teaches, taken from the first cue, `KineticText`.
-- **Step chips:** a small "ধাপ ১ / Step 1" label + short keyword from the current cue, top-left of the frame;
-  advance the step at each `click`/`type` event (`events.filter(e => e.type === "click" || e.type === "type")`).
-- **Arrows / callouts:** for the active event (`Math.abs(t - e.t) < 1.2`), draw an SVG arrow or label outside the
-  browser frame edge nearest to the target, using `e.x / e.vw` and `e.y / e.vh` as percentages of the frame.
-  Never hard-code pixel coordinates of page elements.
-- **Progress bar:** thin bar at the very top, `width: (t / durationSec) * 100 + "%"`.
-- **Outro card** over the last cue if it is a closing line.
-
-Picture-in-picture presenter (optional): if `character !== "none"`, put
-`<Presenter character={character} cues={cues} size={height * 0.32} />` in a rounded or circular PiP badge in the
-bottom-right (16:9) or below the recording (9:16). It lip-syncs automatically. It must never cover the recording
-area where the current event is: if the active event is in the bottom-right quadrant
-(`e.x / e.vw > 0.6 && e.y / e.vh > 0.6`), slide the PiP to the bottom-left.
-
-## 4. Checklist
+## 3. Checklist
 
 - [ ] `record.mjs` starts with the action table comment; every action preceded by `h.at(sec)` with increasing times.
 - [ ] Only `h.*` helpers perform actions; locators are role/label/text first.
 - [ ] No hard-coded credentials; no destructive actions the voice did not ask for.
-- [ ] `Video.tsx` uses `<BrowserRecording>` with `events` from props and handles missing `recordingSrc`.
-- [ ] Overlays are positioned from `events` percentages, not guessed pixels.
-- [ ] No `<Captions>` (studio-owned); PiP presenter does not hide the action; the recording gets a gentle CameraDrift/spring entrance and never sits perfectly static (remotion-core section 8).
 
-## Cinematic motion (applies to the whole video)
-
-Follow remotion-core section 8. The browser frame springs in (`SPRING.soft`) instead of appearing, sits on a
-`<Parallax depth={0.3}>` layer over a drifting gradient, and the whole composition has a very gentle
-`<CameraDrift push={0.03}>` on top of the kit's own click-zoom. Highlight callouts and labels spring in
-(`SPRING.snappy`), and the presenter PiP slides in with a spring. When the viewer must read UI text, keep the
-camera still for that moment.

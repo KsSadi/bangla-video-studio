@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 const voice = (v: unknown, d: TtsVoice): TtsVoice => (typeof v === "string" && v in TTS_VOICES ? (v as TtsVoice) : d);
 
 /**
- * POST { text, voice?, voiceB?, rate?, name? } -> creates a project whose audio is a Bengali neural voice (edge-tts)
+ * POST { text, voice?, rate?, name? } -> creates a project whose audio is a Bengali neural voice (edge-tts)
  * and whose subtitles come from the voice's own word timings. Poll /api/status like a Whisper job.
  */
 export async function POST(req: Request) {
@@ -22,6 +22,6 @@ export async function POST(req: Request) {
   const job = createJob(".mp3", name);
   job.subtitlesSource = "tts";
   saveJob(job);
-  startTts(job, { text, voice: voice(body?.voice, "bn-BD-NabanitaNeural"), voiceB: voice(body?.voiceB, "bn-BD-PradeepNeural"), rate: `${pct >= 0 ? "+" : "-"}${Math.abs(pct)}%`, pitch: `${hz >= 0 ? "+" : "-"}${Math.abs(hz)}Hz` });
+  startTts(job, { text, voice: voice(body?.voice, "bn-BD-NabanitaNeural"), rate: `${pct >= 0 ? "+" : "-"}${Math.abs(pct)}%`, pitch: `${hz >= 0 ? "+" : "-"}${Math.abs(hz)}Hz` });
   return NextResponse.json({ jobId: job.id, name: job.name, subtitlesSource: "tts" });
 }

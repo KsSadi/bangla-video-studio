@@ -13,16 +13,15 @@ import { brandLogoPath, loadBrand } from "@/lib/brand";
 import { applyBroll, existingBroll } from "@/lib/broll";
 import { REMOTION, renderLine } from "@/lib/render-util";
 import { chunkSettings, renderChunked } from "@/lib/chunks";
-import { getCharacterLook } from "@/lib/characters";
 import { applyToCues } from "@/lib/dictionary-core";
 import { extractDirections, mapDirections, type Direction } from "@/lib/directions";
 import { getStyle } from "@/lib/styledna";
 import { getTemplate } from "@/lib/templates";
 import { loadDictionary } from "@/lib/dictionary";
-import { PYTHON, claude, claudeJson, ffmpeg, node, remotionBrowserArgs, run, typecheckWithRepair, type RunOpts } from "@/lib/exec";
+import { PYTHON, claude, claudeJson, ffmpeg, node, remotionBrowserArgs, run, type RunOpts } from "@/lib/exec";
 import { makeExtras } from "@/lib/extras";
 import { enhanceVoice, ensureBgm, ensureSfx } from "@/lib/media";
-import { buildFillPrompt, buildHealPrompt, buildPlanPrompt, buildPlanRevisePrompt, buildPrompt, buildRecordPrompt, buildRevisePrompt, buildScenePatchPrompt, type RecFailure } from "@/lib/prompts";
+import { buildFillPrompt, buildHealPrompt, buildPlanPrompt, buildPlanRevisePrompt, buildRecordPrompt, buildScenePatchPrompt, type RecFailure } from "@/lib/prompts";
 import { applyStyleDna } from "@/remotion/engine/styledna";
 import { fillSkeleton, skeletonFromBlueprint } from "@/remotion/engine/template";
 import { autoPlan, mergeScenes, normalizePlan, parseRevisionTarget, revisionSlice, tutorialPlan, type ScenePlan } from "@/remotion/engine/plan";
@@ -30,8 +29,6 @@ import { QUALITY_PRESETS, effectiveCaptions, type Quality, type StudioSettings }
 import { ROOT, jobDir, log, previewPath, publicDir, resetSteps, saveJob, setProgress, setSrt, setStep, versionFile, versionsDir, type Job, type StepId, type StepState } from "@/lib/store";
 import { parseSrt, toSrt, totalSeconds, type RecEvent, type VideoProps } from "@/remotion/lib/types";
 
-const GENERATED = path.join(ROOT, "remotion", "generated", "Video.tsx");
-const TEMPLATE = path.join(ROOT, "remotion", "template", "Video.tsx");
 const rel = (p: string) => path.relative(ROOT, p).replace(/\\/g, "/");
 
 export type RunInput = { settings: StudioSettings; srt: string; quality: Quality; password?: string };
@@ -103,9 +100,9 @@ export type TtsVoice = keyof typeof TTS_VOICES;
 
 /**
  * Auto-Voice: synthesize the pasted Bengali script with edge-tts (free neural voices, no API key) AND build the exact
- * .srt from the voice's own word timings. Lines tagged "A:"/"B:" use two voices and become Dialogue Mode speakers.
+ * .srt from the voice's own word timings.
  */
-export function startTts(job: Job, input: { text: string; voice: TtsVoice; voiceB: TtsVoice; rate: string; pitch?: string }) {
+export function startTts(job: Job, input: { text: string; voice: TtsVoice; rate: string; pitch?: string }) {
   job.status = "running";
   job.srt = undefined;
   job.error = undefined;
@@ -125,8 +122,8 @@ export function startTts(job: Job, input: { text: string; voice: TtsVoice; voice
   if (marks.length) log(job, `${marks.length} scene direction${marks.length > 1 ? "s" : ""} found in [brackets]: not spoken, used to plan the visuals.`);
   const audio = path.join(publicDir(job.id), job.audioFile);
   const out = path.join(dir, "subtitles.tts.srt");
-  log(job, `Auto-Voice (edge-tts): ${TTS_VOICES[input.voice]}${/^\s*[ab]\s*[:：]/im.test(input.text) ? ` + ${TTS_VOICES[input.voiceB]} for B lines` : ""}, speed ${input.rate}. Needs an internet connection; no API key.`);
-  run(job, PYTHON, [path.join("scripts", "tts.py"), scriptFile, audio, out, "--voice", input.voice, "--voice-b", input.voiceB, "--rate", input.rate, "--pitch", input.pitch ?? "+0Hz"], {
+  log(job, `Auto-Voice (edge-tts): ${TTS_VOICES[input.voice]}, speed ${input.rate}. Needs an internet connection; no API key.`);
+  run(job, PYTHON, [path.join("scripts", "tts.py"), scriptFile, audio, out, "--voice", input.voice, "--rate", input.rate, "--pitch", input.pitch ?? "+0Hz"], {
     env: { PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
     timeoutMs: 30 * 60_000,
     onLine: (line) => {
@@ -200,15 +197,15 @@ function loadDirections(jobId: string, cueCount: number): Direction[] {
 
 export function startGenerate(job: Job, input: RunInput) {
   launch(job, async (step) => {
-    const ctx = await prepare(job, input, step, input.settings.engine);
+    const ctx = await prepare(job, input, step);
     step("plan", "active");
     const s = ctx.settings;
     if (s.mode === "tutorial") await inspectPage(job, s);
-    if (ctx.engine === "json") {
-      // Default: component library + JSON scene engine. Claude returns a compact plan; no code, no type-check loop.
+    {
+      // Component library + JSON scene engine. Claude returns a compact plan; no code, no type-check loop.
       if (s.mode === "tutorial") {
         await claude(job, buildRecordPrompt(job.id, s, ctx.cues.length));
-        ctx.plan = tutorialPlan(s.character !== "none");
+        ctx.plan = tutorialPlan();
         log(job, "Tutorial scene plan built by the studio (0 tokens).");
       } else {
         const tpl = s.template ? getTemplate(s.template) : null;
@@ -232,7 +229,7 @@ export function startGenerate(job: Job, input: RunInput) {
           ctx.plan = normalizePlan(raw, ctx.cues.length) ?? undefined;
           if (!ctx.plan) {
             log(job, "No usable scene plan from Claude; using the built-in automatic plan so you still get a video.");
-            ctx.plan = autoPlan(ctx.cues, s.character !== "none", dna?.look.sceneSeconds);
+            ctx.plan = autoPlan(ctx.cues, dna?.look.sceneSeconds);
           }
           if (dna) ctx.plan = applyStyleDna(ctx.plan, dna);
         }
@@ -244,11 +241,6 @@ export function startGenerate(job: Job, input: RunInput) {
       }
       savePlan(job, ctx.plan);
       savePreview(job, ctx);
-    } else {
-      // Fallback the user asked for explicitly: custom one-off TSX.
-      fs.copyFileSync(TEMPLATE, GENERATED);
-      await claude(job, buildPrompt(job.id, { settings: s, brand: loadBrand() }, { width: ctx.width, height: ctx.height, fps: ctx.fps, durationSec: ctx.durationSec, cueCount: ctx.cues.length }));
-      await typecheckWithRepair(job);
     }
     step("plan", "done");
     await record(job, ctx, step, true);
@@ -285,7 +277,7 @@ export function startRerender(job: Job, input: RunInput & { baseVersion?: number
   launch(job, async (step) => {
     const src = restoreSource(job, input.baseVersion);
     if (!src) throw new Error("There is no generated video yet. Generate first.");
-    const ctx = await prepare(job, input, step, src.engine);
+    const ctx = await prepare(job, input, step);
     ctx.plan = src.plan;
     savePreview(job, ctx);
     step("plan", "skipped");
@@ -301,20 +293,15 @@ export function startRevise(job: Job, input: RunInput & { feedback: string; base
     const base = input.baseVersion ?? job.versions[job.versions.length - 1]?.n ?? 0;
     const src = restoreSource(job, input.baseVersion);
     if (!src) throw new Error("There is no generated video to revise yet.");
-    const ctx = await prepare(job, input, step, src.engine);
+    const ctx = await prepare(job, input, step);
     const dir = jobDir(job.id);
     const recordFile = path.join(dir, "record.mjs");
     const before = hashFile(recordFile);
     step("plan", "active");
     log(job, `Revising from v${base}: ${input.feedback.slice(0, 200)}`);
-    if (src.engine === "json" && src.plan) {
-      ctx.plan = ctx.settings.mode === "tutorial" ? await reviseTutorial(job, ctx, src.plan, input.feedback) : await revisePlan(job, ctx, src.plan, input.feedback);
-      savePlan(job, ctx.plan);
-      savePreview(job, ctx);
-    } else {
-      await claude(job, buildRevisePrompt(job.id, { settings: ctx.settings, brand: loadBrand(), feedback: input.feedback, baseVersion: base, durationSec: ctx.durationSec }));
-      await typecheckWithRepair(job);
-    }
+    ctx.plan = ctx.settings.mode === "tutorial" ? await reviseTutorial(job, ctx, src.plan, input.feedback) : await revisePlan(job, ctx, src.plan, input.feedback);
+    savePlan(job, ctx.plan);
+    savePreview(job, ctx);
     step("plan", "done");
     await record(job, ctx, step, hashFile(recordFile) !== before);
     const v = await renderAndSave(job, ctx, step, `Revision: ${input.feedback.replace(/\s+/g, " ").slice(0, 48)}`);
@@ -351,8 +338,8 @@ async function revisePlan(job: Job, ctx: Ctx, plan: ScenePlan, feedback: string)
   const merged = mergeScenes(plan, edited, ctx.cues.length, allowed);
   let next = merged.plan;
   if (!target) {
-    const top = normalizePlan({ ...next, accent: r.accent ?? next.accent, character: r.character ?? next.character }, ctx.cues.length);
-    if (top && (top.accent !== plan.accent || top.character !== plan.character)) {
+    const top = normalizePlan({ ...next, accent: r.accent ?? next.accent }, ctx.cues.length);
+    if (top && (top.accent !== plan.accent)) {
       next = top;
       merged.changed.push("theme");
     }
@@ -394,21 +381,20 @@ export type Ctx = {
   height: number;
   fps: number;
   durationSec: number;
-  extra: Pick<VideoProps, "audioSrc" | "captionStyle" | "captionOpts" | "brand" | "bgmSrc" | "bgmVolume" | "sfx" | "media" | "lipsyncSrc" | "character" | "dialogue" | "characterB" | "lookA" | "lookB">;
+  extra: Pick<VideoProps, "audioSrc" | "captionStyle" | "captionOpts" | "brand" | "bgmSrc" | "bgmVolume" | "sfx" | "silent" | "media">;
   recording: Pick<VideoProps, "recordingSrc" | "events">;
-  engine: "json" | "custom";
   plan?: ScenePlan;
 };
 
 /** The exact props the "Main" composition renders with (also saved as preview.json for the live preview and the Shorts clipper). */
 export function buildProps(ctx: Ctx): VideoProps {
   const q = QUALITY_PRESETS[ctx.quality];
-  return { cues: ctx.cues, durationSec: ctx.durationSec, width: ctx.width, height: ctx.height, fps: q.fps, ...ctx.extra, ...ctx.recording, ...(ctx.engine === "json" && ctx.plan ? { plan: ctx.plan } : {}) };
+  return { cues: ctx.cues, durationSec: ctx.durationSec, width: ctx.width, height: ctx.height, fps: q.fps, ...ctx.extra, ...ctx.recording, ...(ctx.plan ? { plan: ctx.plan } : {}) };
 }
 
 /** Save the planned video's props. The browser loads this into the live Remotion Player as soon as the plan exists. */
 function savePreview(job: Job, ctx: Ctx) {
-  if (ctx.engine !== "json" || !ctx.plan) return;
+  if (!ctx.plan) return;
   try {
     fs.writeFileSync(previewPath(job.id), JSON.stringify(buildProps(ctx)));
     log(job, "Live preview ready: scrub and play it in the browser while the MP4 renders.");
@@ -420,7 +406,7 @@ function savePreview(job: Job, ctx: Ctx) {
 const hashFile = (p: string) => (fs.existsSync(p) ? createHash("sha1").update(fs.readFileSync(p)).digest("hex") : "");
 
 /** Step "prepare": subtitles on disk, optional voice enhance, BGM, SFX, brand, media. Each is skipped when its flag is off. */
-async function prepare(job: Job, input: RunInput, step: (id: StepId, s: StepState) => void, engine: "json" | "custom"): Promise<Ctx> {
+async function prepare(job: Job, input: RunInput, step: (id: StepId, s: StepState) => void): Promise<Ctx> {
   const s = input.settings;
   const dir = jobDir(job.id);
   const pub = publicDir(job.id);
@@ -461,33 +447,6 @@ async function prepare(job: Job, input: RunInput, step: (id: StepId, s: StepStat
   if (s.autoBroll) for (const m of existingBroll(pub)) if (!media.some((x) => x.src === m.src)) media.push(m);
   if (!media.length) log(job, "No extra media assets: skipping B-roll.");
 
-  // characters: built-in, auto, or looks saved in the Character Builder; optional second speaker (Dialogue Mode)
-  let character = s.character;
-  let lookA: VideoProps["lookA"];
-  let lookB: VideoProps["lookB"];
-  if (s.character === "custom") {
-    lookA = getCharacterLook(s.customCharacter);
-    if (!lookA) {
-      log(job, "The selected custom character was not found in the library; using Storyteller instead.");
-      character = "storyteller";
-    }
-  }
-  const dialogue = s.dialogue && character !== "none";
-  if (dialogue && s.characterB === "custom") {
-    lookB = getCharacterLook(s.customCharacterB);
-    if (!lookB) log(job, "Speaker B's custom character was not found; using Friendly Teacher.");
-  }
-  if (dialogue) log(job, `Dialogue Mode ON: two characters; the spotlight follows each cue's speaker (${job.srt ? "A/B tags from the timeline" : "A by default"}).`);
-
-  // small mono copy of the voice for waveform lip-sync (decoded in the render browser; keeps long videos light)
-  let lipsyncSrc: string | undefined;
-  if (engine === "json" && s.character !== "none") {
-    fs.mkdirSync(path.join(pub, "audio"), { recursive: true });
-    await ffmpeg(job, ["-i", path.join(pub, audioSrc), "-ac", "1", "-ar", "8000", "-c:a", "pcm_s16le", path.join(pub, "audio", "lipsync.wav")], { quiet: true });
-    lipsyncSrc = "audio/lipsync.wav";
-    log(job, "Lip-sync: character mouth follows the real voice waveform.");
-  }
-
   const audioSec = Number(await run(job, "ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", path.join(pub, audioSrc)], { quiet: true }).catch(() => "0"));
   const durationSec = Math.ceil(Math.max(audioSec || 0, cues[cues.length - 1].end + 0.5) * 10) / 10;
   const q = QUALITY_PRESETS[input.quality];
@@ -503,9 +462,8 @@ async function prepare(job: Job, input: RunInput, step: (id: StepId, s: StepStat
     height: h,
     fps: q.fps,
     durationSec,
-    extra: { audioSrc, captionStyle: effectiveCaptions(s), captionOpts: { size: s.captionSize, position: s.captionPosition }, brand, bgmSrc, bgmVolume: s.bgmVolume, sfx: s.sfx || undefined, media: media.length ? media : undefined, lipsyncSrc, character, ...(dialogue ? { dialogue: true, characterB: lookB || s.characterB === "custom" ? ("custom" as const) : s.characterB } : {}), ...(lookA ? { lookA } : {}), ...(lookB ? { lookB } : {}) },
+    extra: { audioSrc, captionStyle: effectiveCaptions(s), captionOpts: { size: s.captionSize, position: s.captionPosition }, brand, bgmSrc, bgmVolume: s.bgmVolume, sfx: s.sfx || undefined, silent: s.silent || undefined, media: media.length ? media : undefined },
     recording: {},
-    engine,
   };
 }
 
@@ -605,25 +563,14 @@ async function renderAndSave(job: Job, ctx: Ctx, step: (id: StepId, s: StepState
     const opts: RunOpts = { timeoutMs: 60 * 60_000, onLine: renderLine(job) };
     return node(job, REMOTION, ["render", "remotion/index.ts", "Main", out, `--props=${propsFile}`, `--public-dir=${pub}`, `--crf=${q.crf}`, "--log=info", ...remotionBrowserArgs()], opts);
   };
-  if (ctx.engine === "json") await render(); // pre-built components: nothing for Claude to repair
-  else
-    await render().catch(async (err: Error) => {
-      log(job, "Render failed; asking Claude to fix the composition…");
-      await claude(job, `Rendering remotion/generated/Video.tsx failed. Fix it (re-read .claude/skills/custom/remotion-core.md). Only edit that file; keep the GeneratedVideo export contract.\n\nError:\n${err.message.slice(-3000)}`);
-      await typecheckWithRepair(job);
-      await render();
-    });
+  await render();
 
   // keep the source that produced this version (per-version snapshot for compare/revert/revise)
-  if (ctx.engine === "json" && ctx.plan) fs.writeFileSync(path.join(versionsDir(job.id), `v${n}.scene-plan.json`), JSON.stringify(ctx.plan, null, 2));
-  else {
-    fs.copyFileSync(GENERATED, path.join(dir, "Video.tsx"));
-    fs.copyFileSync(GENERATED, path.join(versionsDir(job.id), `v${n}.Video.tsx`));
-  }
+  if (ctx.plan) fs.writeFileSync(path.join(versionsDir(job.id), `v${n}.scene-plan.json`), JSON.stringify(ctx.plan, null, 2));
   const rec = path.join(dir, "record.mjs");
   if (fs.existsSync(rec)) fs.copyFileSync(rec, path.join(versionsDir(job.id), `v${n}.record.mjs`));
   if (job.tokens) log(job, `Claude tokens this run: ${job.tokens.input} in / ${job.tokens.output} out.`);
-  job.versions.push({ n, quality: ctx.quality, engine: ctx.engine, label, createdAt: new Date().toISOString(), size: fs.statSync(out).size });
+  job.versions.push({ n, quality: ctx.quality, label, createdAt: new Date().toISOString(), size: fs.statSync(out).size });
   job.videoReady = true;
   saveJob(job);
   step("render", "done");
@@ -641,10 +588,9 @@ async function renderAndSave(job: Job, ctx: Ctx, step: (id: StepId, s: StepState
 }
 
 /**
- * Put the source of version `n` (default: latest) back in place. A version is either a JSON scene plan
- * (returned, and written to scene-plan.json) or custom TSX (copied to remotion/generated/Video.tsx).
+ * Put the source of version `n` (default: latest) back in place: its JSON scene plan is returned and written to scene-plan.json.
  */
-function restoreSource(job: Job, n?: number): { engine: "json" | "custom"; plan?: ScenePlan } | null {
+function restoreSource(job: Job, n?: number): { plan: ScenePlan } | null {
   const dir = jobDir(job.id);
   const v = n ?? job.versions[job.versions.length - 1]?.n;
   if (!v) return null;
@@ -657,16 +603,11 @@ function restoreSource(job: Job, n?: number): { engine: "json" | "custom"; plan?
       const plan = normalizePlan(JSON.parse(fs.readFileSync(planSnap, "utf8")), cueCount);
       if (plan) {
         savePlan(job, plan);
-        return { engine: "json", plan };
+        return { plan };
       }
     } catch {
-      /* fall through to TSX */
+      /* unreadable plan snapshot */
     }
   }
-  const snap = path.join(versionsDir(job.id), `v${v}.Video.tsx`);
-  if (!fs.existsSync(snap)) return null;
-  fs.mkdirSync(path.dirname(GENERATED), { recursive: true });
-  fs.copyFileSync(snap, GENERATED);
-  fs.copyFileSync(snap, path.join(dir, "Video.tsx"));
-  return { engine: "custom" };
+  return null;
 }

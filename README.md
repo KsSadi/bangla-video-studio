@@ -1,14 +1,14 @@
 # বাংলা ভিডিও স্টুডিও (Bangla Video Studio)
 
-Local-first AI video studio. Upload a Bengali voiceover and get an MP4: cartoon story, motion-graphics
-explainer, or a recorded website tutorial.
+Local-first AI video studio. Upload a Bengali voiceover and get an MP4: a general video (the AI picks
+the style from your voice and instructions) or a recorded website tutorial.
 
 **No API keys.** All AI work is done by the `claude` CLI (Claude Code) already installed and logged in on your
 machine, spawned in headless mode (`claude -p`). Speech-to-text is local Whisper. Rendering is local Remotion.
 
 ```
 voice.mp3 ─▶ faster-whisper (bn) ─▶ subtitles.srt ─▶ you fix spelling in the UI
-          ─▶ claude -p + .claude/skills/<mode>.md ─▶ remotion/generated/Video.tsx (+ Playwright record.mjs)
+          ─▶ claude -p + .claude/skills/*.md ─▶ scene-plan.json (+ Playwright record.mjs)
           ─▶ [tutorial] Playwright records the browser ─▶ ffmpeg ─▶ recording.mp4
           ─▶ remotion render ─▶ projects/<name>/versions/vN.mp4
 ```
@@ -44,10 +44,9 @@ Open <http://localhost:3000>.
 
 1. **Upload Bengali Voice** – drop an `.mp3`, `.wav` or `.m4a`. Whisper generates the subtitles; edit any line
    to fix spelling (click a timestamp to hear that line).
-2. **Video Mode** – Cartoon Story, Motion Graphics / Explainer, App / Website Tutorial (asks for the target URL
-   and optional login), or Auto-Detect. Add optional notes/action hints.
-3. **Character & Aspect Ratio** – Tech Mentor, Storyteller, Friendly Teacher, Auto-Generate, or No Character;
-   16:9 (YouTube) or 9:16 (Reels/Shorts).
+2. **Video Type** – General Video (AI picks the style) or Screen Tutorial (asks for the website URL and optional
+   login). Add optional instructions in Step 1.
+3. **Screen Size** – 16:9 (YouTube) or 9:16 (Reels/Shorts).
 4. **Generate Video** – watch the steps and live console.
 5. **Preview & Download** – play the result and download `final-video.mp4`.
 
@@ -95,22 +94,20 @@ app/                    Next.js UI (page.tsx) and API routes
   api/status            GET job steps, logs, subtitles
   api/video             GET final MP4 (stream / download)
 lib/pipeline.ts         Pipeline: spawns python, claude, node, ffmpeg, remotion (lib/store.ts = projects, lib/media.ts = FFmpeg audio)
-.claude/skills/         Skills Claude reads per mode
-  remotion-core.md      Shared rules: timing, animation, Bengali typography
-  cartoon-story.md      2D characters, lip-sync, backgrounds
-  motion-graphics.md    Kinetic type, charts, icons, transitions
+.claude/skills/         Guides Claude reads
+  scene-plan.md         JSON scene-plan schema + planning rules
+  style-cartoon.md      Story style guide
+  style-motion.md       Explainer style guide
+  reels-shorts.md       9:16 safe zones for Shorts
   browser-tutorial.md   Playwright script + recording wrap
 remotion/
-  lib/kit.tsx           Reusable blocks: fonts, Captions, KineticText, Presenter, BrowserRecording
-  characters/           Rigged SVG character (blink, lip-sync, expressions)
-  template/Video.tsx    Baseline video (works without AI)
-  generated/Video.tsx   Written by Claude for each job
+  lib/kit.tsx           Reusable blocks: fonts, Captions, KineticText, BrowserRecording
 scripts/
   transcribe.py         faster-whisper -> SRT
   recorder.mjs          Playwright recording helper (cursor, click log, sync)
   inspect-page.mjs      Dumps page elements so Claude writes real selectors
   setup.mjs             One-time setup
-projects/<name>/         Auto-saved project: audio, subtitles.srt, project.json (settings, revisions), Video.tsx, versions/v1.mp4…, thumbnail.png, metadata.json
+projects/<name>/         Auto-saved project: audio, subtitles.srt, project.json (settings, revisions), scene-plan.json, versions/v1.mp4…, thumbnail.png, metadata.json
 _reference_skills/      Open-source skills the studio's skills were built from (not needed at runtime)
 ```
 
@@ -125,7 +122,6 @@ Edit the files in `.claude/skills/` to change the style of every future video.
 - **Tutorial mode runs generated code.** Claude writes a Playwright script that is executed on your machine
   against the URL you entered. Login email/password are passed to that script as environment variables only;
   they are not written to disk and not sent to Claude. Use a test account for sites that matter.
-- **Lip-sync is subtitle-driven** (mouth moves while a cue is spoken), not phoneme-accurate.
 - **Tutorial selectors:** only the first page is inspected in advance. For multi-page flows, add action hints
   ("click the blue Sign up button at 0:05") for better accuracy.
 - The server listens on `127.0.0.1` only.
@@ -166,17 +162,17 @@ Offline Remotion: set `REMOTION_BROWSER_EXECUTABLE` to a Chrome/Chromium path to
 | --- | --- | --- |
 | **Subtitles master switch + 4 themes** | Step 4 | "Show Subtitles" OFF renders a completely clean video (the `.srt` still times the scenes, and the layout reclaims the caption band). ON offers **Viral Word-Pop** (spoken word scales up in the accent colour), **Cinema Pill** (frosted-glass pill), **Gradient Glow** (soft glow + gradient keyword) and **Minimalist Classic** (bottom bar), all in Hind Siliguri / Noto Sans Bengali, plus font size (60-160%) and Bottom / Center position. Old projects that stored "none" load as switch OFF. |
 | **Clone style from a reference video** | Step 2 | FFmpeg extracts 5 keyframes, the dominant colours (median-cut) and the cutting pace (scene detection); `claude -p` reads the keyframes and writes `style-dna.json` (palette, backgrounds, transitions, text placement, caption style, scene length, notes). Saved in `data/styles/`. Colours, accent and transitions are stamped onto the new plan deterministically; pacing and composition go into the planning prompt. If Claude is unavailable the measured palette + pacing are used. |
-| **Reusable templates** | Step 6 "Save as reusable template", Step 1 "My Templates" | `data/templates/<id>.json` stores the structure only: scene boundaries as ratios of the total length, background / colours / transition / character / camera per scene, element slots (counts and types, never text), plus the workflow settings (subtitle design, music, brand toggles, style DNA). A new voice or `.srt` is mapped onto it (nearest cue per ratio) and Claude only fills the content slots, so the new video follows the same proven structure for a fraction of the tokens. |
+| **Reusable templates** | Step 6 "Save as reusable template", Step 1 "My Templates" | `data/templates/<id>.json` stores the structure only: scene boundaries as ratios of the total length, background / colours / transition / camera per scene, element slots (counts and types, never text), plus the workflow settings (subtitle design, music, brand toggles, style DNA). A new voice or `.srt` is mapped onto it (nearest cue per ratio) and Claude only fills the content slots, so the new video follows the same proven structure for a fraction of the tokens. |
 
 ## Reliability upgrades (each has its own ON/OFF control)
 
 | Upgrade | Where | How it works |
 | --- | --- | --- |
-| **Auto-Voice from a script** | Step 1, tab "Write / paste script" | `scripts/tts.py` uses the free `edge-tts` package (Microsoft neural voices `bn-BD-NabanitaNeural` / `bn-BD-PradeepNeural`, no API key) and builds the `.srt` from the voice's own word timings. Lines starting with `A:` / `B:` use two voices and turn on Dialogue Mode. Needs internet only for this step; retries automatically when the free service hiccups. |
+| **Auto-Voice from a script** | Step 1, tab "Write / paste script" | `scripts/tts.py` uses the free `edge-tts` package (Microsoft neural voices `bn-BD-NabanitaNeural` / `bn-BD-PradeepNeural`, no API key) and builds the `.srt` from the voice's own word timings. Needs internet only for this step; retries automatically when the free service hiccups. |
 | **Auto-Replace Dictionary** | Step 1, collapsible | Saved find-and-replace rules (`data/dictionary.json`, e.g. `রিয়্যাক্ট -> React`). Applied automatically to every Whisper `.srt`; "Apply to current subtitles" fixes an existing one. One pass, longest rule first, so replacements are never re-replaced. |
 | **Self-healing Playwright tutorials** | Step 2 (Tutorial mode), "Self-healing recorder" | `scripts/recorder.mjs` first tries the given locator, then `getByRole` / `getByLabel` / `getByPlaceholder` / `getByText` fallbacks built from the target's text, then a fuzzy text match over visible elements. Anything still failing is skipped (the recording finishes) and saved to `failures.json` with the error, URL, screenshot and accessibility snapshot. `claude -p` (light model) then patches only those selectors once and the studio re-records once. |
 | **Chunked rendering** | Step 5 toggle | Videos over 3 minutes render as separate Remotion runs over frame ranges (`--frames=a-b`) of the same composition (about 90 s each, so transitions stay continuous), muted. The audio mix is rendered once, and `ffmpeg -f concat` stitches video + audio without re-encoding. Tune with `STUDIO_CHUNK_SEC` / `STUDIO_CHUNK_MIN`. |
-| **Studio presets** | Top of the workspace | Save the reusable workflow (mode, character, dialogue, music, captions, brand toggles, engine and feature switches) under a name and load it in one click (`data/presets.json`). Per-video items (notes, URL, login, media) are not part of a preset. |
+| **Studio presets** | Top of the workspace | Save the reusable workflow (mode, music, captions, brand toggles, engine and feature switches) under a name and load it in one click (`data/presets.json`). Per-video items (notes, URL, login, media) are not part of a preset. |
 
 ## Pro-creator features (each has its own ON/OFF switch, all local, no paid API keys)
 
@@ -184,8 +180,6 @@ Offline Remotion: set `REMOTION_BROWSER_EXECUTABLE` to a Chrome/Chromium path to
 | --- | --- | --- |
 | **Instant live preview** | Step 5 toggle, shown in the Live Monitor | `@remotion/player` plays the real "Main" composition from `projects/<id>/preview.json` as soon as `scene-plan.json` exists (and again after every revision), so you can scrub and inspect before any MP4 render. `staticFile()` is pointed at `/api/pub/<id>/`. |
 | **Long-to-Shorts (9:16)** | Step 6, after a video exists | **Option A:** one `claude-haiku-4-5` call reads only the subtitles and returns up to 3 timestamp ranges. **Option B:** type start/end (+ optional Bengali hook) for 0 tokens. Both then use deterministic code (`remotion/engine/slice.ts` + ffmpeg) to cut the existing plan and audio, switch to 1080x1920 with the safe zones from `.claude/skills/reels-shorts.md`, and render locally to `projects/<id>/shorts/`. |
-| **Dialogue Mode (2 speakers)** | Step 3 toggle + A/B selector per subtitle row | Speaker tags are stored in the `.srt` as `[A]` / `[B]`. Two characters share the screen; the spotlight, scale and the real-waveform lip-sync follow the active speaker. |
-| **Character Customizer** | Step 3 "My characters" | Mix hair, skin tone, glasses, beard, bindi and outfits (shirt, Panjabi, formal suit, hoodie, saree). Saved to `data/characters.json` and reusable in any project (as speaker A or B). |
 | **Auto B-roll** | Step 5 toggle | Claude adds a 1-3 word English `photo` query to up to 4 scenes (a few tokens). The studio then searches the free Wikimedia Commons API (no key), keeps only public-domain / CC0 images, and places them in animated frames. OFF = pure vector graphics. |
 
 ## Architecture: component library + JSON scene engine (low-token by design)
@@ -195,11 +189,10 @@ subtitles ─▶ claude -p (ONE turn, no tools) ─▶ scene-plan.json ─▶ re
                                                    ▲ validated by remotion/engine/plan.ts
 ```
 
-- **`remotion/library/`** holds the pre-built components: `TalkingCharacter` (waveform lip-sync via
-  `@remotion/media-utils`, blinking, emotions), `SceneBackground`, `IconSpotlight` / `IconRow` (lucide-react +
+- **`remotion/library/`** holds the pre-built components: `SceneBackground`, `IconSpotlight` / `IconRow` (lucide-react +
   built-in illustrations), `DataChart`, `SmartZoomContainer`, `KineticSubtitles`.
 - **`scene-plan.json`** is all Claude writes: scenes keyed to subtitle cue numbers, each picking a background,
-  transition, character emotion and 1-3 elements (title, icons, illustration, list, chart, media). The guide the
+  transition and 1-3 elements (title, icons, illustration, list, chart, media). The guide the
   model sees is `.claude/skills/scene-plan.md` + `style-*.md`, inlined into the prompt (no file reads).
 - **Invalid output cannot break a render:** the plan is sanitized, unknown icons fall back, and if Claude returns
   nothing usable a built-in automatic plan is used. Tutorial videos need no AI plan at all (only `record.mjs`).
@@ -208,4 +201,3 @@ subtitles ─▶ claude -p (ONE turn, no tools) ─▶ scene-plan.json ─▶ re
 - **Model routing:** Token Saver mode runs light tasks (YouTube pack, single-scene edits) on
   `claude-haiku-4-5` and planning on `sonnet`; Max Quality uses your CLI default for everything. Override with
   `CLAUDE_MODEL_LIGHT` / `CLAUDE_MODEL_HEAVY` / `CLAUDE_MODEL`. Token usage of every call is printed in the console.
-- **Custom one-off TSX** remains as an opt-in toggle (skills in `.claude/skills/custom/`).

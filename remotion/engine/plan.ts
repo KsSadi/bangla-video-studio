@@ -5,11 +5,8 @@
  */
 import type { Cue } from "../lib/types.ts";
 
-export const EMOTIONS = ["happy", "explaining", "thinking", "excited"] as const;
-export type Emotion = (typeof EMOTIONS)[number];
 export const BACKGROUNDS = ["gradient", "particles", "grid"] as const;
 export const TRANSITIONS = ["fade", "slide-left", "slide-up", "zoom", "wipe"] as const;
-export const CHARACTER_IDS = ["tech-mentor", "storyteller", "friendly-teacher"] as const;
 export const ILLUSTRATIONS = ["laptop", "phone", "idea", "growth", "team"] as const;
 export const CHARTS = ["bar", "line", "progress"] as const;
 export const FRAMES = ["browser", "phone", "polaroid", "card"] as const;
@@ -33,8 +30,6 @@ export type PlanScene = {
   bg?: (typeof BACKGROUNDS)[number];
   colors?: string[];
   transition?: (typeof TRANSITIONS)[number];
-  /** Omit for no character in this scene. */
-  character?: { emotion: Emotion; side?: "left" | "right" | "center" };
   elements: PlanElement[];
   zoom?: PlanZoom[];
   /** Optional B-roll: 1-3 English search words. The studio fetches a public-domain/CC0 photo and adds it as a media element. */
@@ -43,8 +38,6 @@ export type PlanScene = {
 
 export type ScenePlan = {
   version: 1;
-  /** Which pre-built character to use when the user chose "Auto". */
-  character?: (typeof CHARACTER_IDS)[number];
   accent?: string;
   scenes: PlanScene[];
 };
@@ -110,10 +103,6 @@ export function normalizeScene(raw: unknown, cueCount: number): PlanScene | null
   if (colors.length >= 2) scene.colors = colors;
   const transition = oneOf(raw.transition, TRANSITIONS);
   if (transition) scene.transition = transition;
-  if (isObj(raw.character)) {
-    const side = oneOf(raw.character.side, ["left", "right", "center"] as const);
-    scene.character = { emotion: oneOf(raw.character.emotion, EMOTIONS) ?? "explaining", ...(side ? { side } : {}) };
-  }
   const zoom = (Array.isArray(raw.zoom) ? raw.zoom : [])
     .map((z) => (isObj(z) && typeof z.at === "number" ? { at: num(z.at, 0, 1e6, 0), x: num(z.x, 0, 1, 0.5), y: num(z.y, 0, 1, 0.5), scale: num(z.scale, 1, 3, 1.5), hold: num(z.hold, 0.3, 20, 2) } : null))
     .filter((z): z is PlanZoom => !!z)
@@ -142,8 +131,6 @@ export function normalizePlan(raw: unknown, cueCount: number): ScenePlan | null 
     seenId.add(s.id);
   }
   const plan: ScenePlan = { version: 1, scenes };
-  const character = oneOf(raw.character, CHARACTER_IDS);
-  if (character) plan.character = character;
   if (hex(raw.accent)) plan.accent = hex(raw.accent);
   return plan;
 }
@@ -173,7 +160,7 @@ const PALETTES = [
 ];
 
 /** Deterministic fallback plan (no AI): a new scene roughly every 7 s, headline taken from the cue text. */
-export function autoPlan(cues: Cue[], withCharacter = true, sceneSec = 7): ScenePlan {
+export function autoPlan(cues: Cue[], sceneSec = 7): ScenePlan {
   const scenes: PlanScene[] = [];
   let last = -99;
   cues.forEach((c, i) => {
@@ -186,7 +173,6 @@ export function autoPlan(cues: Cue[], withCharacter = true, sceneSec = 7): Scene
       bg: BACKGROUNDS[n % BACKGROUNDS.length],
       colors: PALETTES[n % PALETTES.length],
       transition: TRANSITIONS[n % TRANSITIONS.length],
-      ...(withCharacter ? { character: { emotion: EMOTIONS[n % EMOTIONS.length], side: n % 2 ? ("right" as const) : ("left" as const) } } : {}),
       elements: [{ type: "title", text: c.text.split(/\s+/).slice(0, 5).join(" ") }],
     });
   });
@@ -194,8 +180,8 @@ export function autoPlan(cues: Cue[], withCharacter = true, sceneSec = 7): Scene
 }
 
 /** Tutorial videos need no AI plan: one scene with the browser recording (auto-zoom comes from recorded click events). */
-export function tutorialPlan(withCharacter: boolean): ScenePlan {
-  return { version: 1, scenes: [{ id: "s1", fromCue: 1, bg: "grid", ...(withCharacter ? { character: { emotion: "explaining", side: "right" } } : {}), elements: [{ type: "recording" }] }] };
+export function tutorialPlan(): ScenePlan {
+  return { version: 1, scenes: [{ id: "s1", fromCue: 1, bg: "grid", elements: [{ type: "recording" }] }] };
 }
 
 // ---------------------------------------------------------------- surgical revisions
@@ -251,5 +237,5 @@ export function mergeScenes(plan: ScenePlan, edited: unknown[], cueCount: number
 export const compactCues = (cues: Cue[], from = 1, to = cues.length) =>
   cues
     .slice(from - 1, to)
-    .map((c, i) => `${from + i}|${c.start.toFixed(1)}|${c.speaker ? `${c.speaker}: ` : ""}${c.text}`)
+    .map((c, i) => `${from + i}|${c.start.toFixed(1)}|${c.text}`)
     .join("\n");

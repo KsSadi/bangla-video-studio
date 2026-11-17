@@ -3,15 +3,12 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Save, LayoutTemplate, Mic, PenLine, Pencil, Plus, Trash2, AudioLines, Captions, Check, Clapperboard, FileText, Globe, Loader2, Moon, MonitorPlay, Rocket, ShieldCheck, Smartphone, Sparkles, Sun, Tv, UserRound, UploadCloud, WandSparkles, Zap, Film } from "lucide-react";
-import { CHARACTER_STYLES, Character } from "@/remotion/characters/Character";
-import { parseSrt, toSrt, type CharacterId, type Cue } from "@/remotion/lib/types";
+import { parseSrt, toSrt, type Cue } from "@/remotion/lib/types";
 import { BGM_IDS, DEFAULT_SETTINGS, type BgmId, type BrandKit, type Mode, type Quality, type RevisionInfo, type SeoPack, type ShortClip, type StudioSettings, type VersionInfo } from "@/lib/settings";
-import type { SavedCharacter } from "@/lib/characters";
 import type { SavedStyle } from "@/lib/styledna";
 import type { TemplateSummary } from "@/lib/templates";
 import { BrandKitDrawer } from "./components/BrandKit";
 import { CaptionsPanel } from "./components/CaptionsPanel";
-import { CharacterBuilder } from "./components/CharacterBuilder";
 import { DictionaryPanel } from "./components/DictionaryPanel";
 import { PresetBar } from "./components/PresetBar";
 import { StyleCloner } from "./components/StyleCloner";
@@ -48,27 +45,23 @@ type Status = {
   thumbnail: boolean;
 };
 
-const MODES: { id: Mode; title: string; skill: string; desc: string }[] = [
-  { id: "cartoon", title: "Cartoon Story", skill: "cartoon-story.md", desc: "2D characters with lip-sync, animated backgrounds, story scenes." },
-  { id: "motion", title: "Motion Graphics / Explainer", skill: "motion-graphics.md", desc: "Kinetic Bengali type, charts, icons, smooth transitions." },
-  { id: "tutorial", title: "App / Website Tutorial", skill: "browser-tutorial.md", desc: "Records a real browser session with auto-zoom and highlights." },
-  { id: "auto", title: "Auto-Detect", skill: "Claude picks", desc: "Claude reads the subtitles and chooses the best skill." },
+const MODES: { id: Mode; title: string; desc: string }[] = [
+  { id: "general", title: "General Video", desc: "AI picks the style from your voice and instructions: stories, explainers, anything." },
+  { id: "tutorial", title: "Screen Tutorial", desc: "Records a real website or app screen with auto-zoom." },
 ];
 
 const MODE_ICON: Record<Mode, React.ReactNode> = {
-  cartoon: <Film className="size-5" />,
-  motion: <WandSparkles className="size-5" />,
+  general: <Sparkles className="size-5" />,
   tutorial: <Globe className="size-5" />,
-  auto: <Sparkles className="size-5" />,
 };
 
 const SEED_STEPS: StepView[] = [
-  { id: "transcribe", label: "Generating Bengali SRT", state: "active" },
-  { id: "prepare", label: "Preparing Audio & Assets", state: "pending" },
-  { id: "plan", label: "Planning Scenes", state: "pending" },
-  { id: "record", label: "Recording Browser", state: "pending" },
-  { id: "render", label: "Rendering MP4", state: "pending" },
-  { id: "extras", label: "Thumbnail & YouTube Pack", state: "pending" },
+  { id: "transcribe", label: "Creating subtitles", state: "active" },
+  { id: "prepare", label: "Preparing audio & files", state: "pending" },
+  { id: "plan", label: "Planning scenes", state: "pending" },
+  { id: "record", label: "Recording screen", state: "pending" },
+  { id: "render", label: "Making video", state: "pending" },
+  { id: "extras", label: "Thumbnail & YouTube text", state: "pending" },
 ];
 
 /** Upload with real progress (fetch cannot report upload progress). */
@@ -91,13 +84,8 @@ function uploadForm(body: FormData, onPct: (n: number) => void): Promise<{ ok: b
   });
 }
 
-const CHARACTERS: { id: Exclude<CharacterId, "custom">; title: string; desc: string }[] = [
-  { id: "tech-mentor", title: "Tech Mentor", desc: "Headset, confident" },
-  { id: "storyteller", title: "Storyteller", desc: "Book in hand, warm" },
-  { id: "friendly-teacher", title: "Friendly Teacher", desc: "Glasses, patient" },
-  { id: "auto", title: "Auto-Generate", desc: "Designed from the story" },
-  { id: "none", title: "No Character", desc: "No narrator on screen. Best for dramas / stories" },
-];
+const URL_OK = /^https?:\/\/\S+/;
+const STEPS_PLACEHOLDER = ["1. Open the home page and show the menu", "2. Click Sign up and fill the form", "3. Open the Dashboard and show the Reports feature", "4. Finish on the Pricing page"].join("\n");
 
 const BGM_LABEL: Record<BgmId, string> = { none: "None", "soft-storytelling": "Soft Storytelling", "tech-explainer": "Tech Explainer" };
 
@@ -137,10 +125,8 @@ export default function Studio() {
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState<number | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [library, setLibrary] = useState<SavedCharacter[]>([]);
-  const [builder, setBuilder] = useState<{ open: boolean; editing: SavedCharacter | null }>({ open: false, editing: null });
   const [shorts, setShorts] = useState<ShortClip[]>([]);
-  const [voiceTab, setVoiceTab] = useState<"upload" | "script" | "templates">("upload");
+  const [voiceTab, setVoiceTab] = useState<"script" | "upload">("script");
   const [templates, setTemplates] = useState<TemplateSummary[]>([]);
   const [templatesRev, setTemplatesRev] = useState(0);
   const [tplName, setTplName] = useState("");
@@ -149,8 +135,11 @@ export default function Studio() {
   const cloneStarted = useRef(false);
   const prevRunning = useRef(false);
   const [script, setScript] = useState("");
+  const [brief, setBrief] = useState("");
+  const [outMode, setOutMode] = useState<"voice" | "silent">("voice");
+  const [writing, setWriting] = useState(false);
+  const [exploring, setExploring] = useState(false);
   const [voice, setVoice] = useState("bn-BD-NabanitaNeural");
-  const [voiceB, setVoiceB] = useState("bn-BD-PradeepNeural");
   const [rate, setRate] = useState(0);
   const [pitch, setPitch] = useState(0);
   const [current, setCurrent] = useState(1);
@@ -218,25 +207,9 @@ export default function Studio() {
     if (!res?.ok) return setTplMsg(d?.error ?? "Could not save the template.");
     setTemplatesRev((n) => n + 1);
     setTplName("");
-    setTplMsg(`Saved "${d.template.name}". Find it under Step 1, My Templates.`);
+    setTplMsg(`Saved "${d.template.name}". Find it under Step 3, Start from a saved template.`);
   };
   const activeTemplate = templates.find((t) => t.id === settings.template);
-
-  // Character Builder library (data/characters.json)
-  const loadLibrary = useCallback(async () => {
-    const d = await fetch("/api/characters", { cache: "no-store" }).then((r) => r.json()).catch(() => null);
-    if (d?.characters) setLibrary(d.characters as SavedCharacter[]);
-  }, []);
-  useEffect(() => {
-    void loadLibrary();
-  }, [loadLibrary]);
-  const removeCharacter = async (c: SavedCharacter) => {
-    if (!confirm(`Delete "${c.name}" from your library?`)) return;
-    await fetch(`/api/characters?id=${c.id}`, { method: "DELETE" });
-    if (settings.customCharacter === c.id) patch({ character: "tech-mentor", customCharacter: "" });
-    if (settings.customCharacterB === c.id) patch({ characterB: "friendly-teacher", customCharacterB: "" });
-    void loadLibrary();
-  };
 
   // Theme: read the saved/applied theme once, then keep <html data-theme> + localStorage in sync.
   useEffect(() => {
@@ -255,7 +228,7 @@ export default function Studio() {
 
   // Scroll-spy for the left rail.
   useEffect(() => {
-    const els = [1, 2, 3, 4, 5, 6].map((n) => document.getElementById(`step-${n}`)).filter(Boolean) as HTMLElement[];
+    const els = [1, 2, 3, 4, 5].map((n) => document.getElementById(`step-${n}`)).filter(Boolean) as HTMLElement[];
     const io = new IntersectionObserver(
       (entries) => {
         const vis = entries.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];
@@ -323,7 +296,7 @@ export default function Studio() {
     setJobId(data.jobId);
     setProjectName(data.name ?? projectName);
     setAudioUrl(URL.createObjectURL(audioFile));
-    setSettings({ ...settings, verification: "unchecked", assets: [] });
+    setSettings({ ...settings, verification: "unchecked", assets: [], silent: false });
     setProjectsRev((n) => n + 1);
     if (data.srt) {
       srtLoaded.current = true;
@@ -337,23 +310,95 @@ export default function Studio() {
   };
 
   // Step 1 (alternative): type/paste a Bengali script; edge-tts makes the voice AND the exact .srt, no Whisper needed.
-  const startScript = async () => {
-    if (!script.trim()) return;
+  /** No voice file? Describe the video; Claude writes the Bengali script, which fills the script box for review. */
+  const writeScript = async () => {
+    if (!brief.trim()) return;
+    setError("");
+    setWriting(true);
+    const context = settings.mode === "tutorial" ? `Screen tutorial of ${settings.tutorialUrl || "a website"}. Steps to cover, in order:
+${settings.hints}` : settings.hints;
+    const res = await fetch("/api/write-script", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction: brief, context, format: outMode === "silent" ? "lines" : undefined }) }).catch(() => null);
+    const data = await res?.json().catch(() => ({}));
+    setWriting(false);
+    if (!res?.ok) return setError(data?.error ?? "Could not write the script.");
+    setScript(data.script);
+  };
+  /** Silent video: no voice. One subtitle per line, timed by reading speed, over a silent track + soft music. */
+  const busyWords = running || writing || uploading || exploring;
+  const startSilent = async (text = script) => {
+    if (!text.trim()) return;
     setError("");
     setUploading(true);
     resetProject();
-    const res = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: script, voice, voiceB, rate, pitch, name: projectName.trim() || undefined }) }).catch(() => null);
+    const res = await fetch("/api/silent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, name: projectName.trim() || undefined, minSec: settings.mode === "tutorial" ? 8 : undefined }) }).catch(() => null);
+    const data = await res?.json().catch(() => ({}));
+    setUploading(false);
+    if (!res?.ok) return setError(data?.error ?? "Could not create the silent video project.");
+    setJobId(data.jobId);
+    setProjectName(data.name ?? projectName);
+    setAudioFile(null);
+    setSrtFile(null);
+    setAudioUrl(`/api/audio?id=${data.jobId}`);
+    setSource("srt");
+    srtLoaded.current = true;
+    lastSavedSrt.current = normalizeSrt(data.srt);
+    setCues(parseSrt(data.srt));
+    // no voice: skip voice cleanup, and make sure soft music is on (it is the only sound)
+    setSettings({ ...settings, verification: "verified", assets: [], enhanceVoice: false, silent: true, bgm: settings.bgm === "none" ? "soft-storytelling" : settings.bgm, bgmVolume: Math.max(settings.bgmVolume, 0.4) });
+    setProjectsRev((n) => n + 1);
+    setStatus({ status: "idle", steps: [], logs: [], logCount: 0, srt: data.srt, subtitlesSource: "srt", error: null, videoReady: false, versions: [], revisions: [], seo: null, thumbnail: false });
+  };
+  /** AI scans the website (read-only, logs in if given) and proposes the tutorial steps. Text already in the box is used as the goal. */
+  const exploreSteps = async (): Promise<string> => {
+    if (!URL_OK.test(settings.tutorialUrl)) {
+      setError("Add the website URL in Step 1 first.");
+      return "";
+    }
+    setError("");
+    setExploring(true);
+    const res = await fetch("/api/explore-site", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ url: settings.tutorialUrl, email: settings.tutorialEmail, password, goal: settings.hints }) }).catch(() => null);
+    const data = await res?.json().catch(() => ({}));
+    setExploring(false);
+    if (!res?.ok) {
+      setError(data?.error ?? "Could not explore the site.");
+      return "";
+    }
+    patch({ hints: data.steps });
+    return data.steps as string;
+  };
+  /** Tutorial: steps -> AI writes one narration line per step -> voice (or silent timeline). The steps set the video length. */
+  const createFromSteps = async () => {
+    if (!URL_OK.test(settings.tutorialUrl)) return setError("Add the website URL in Step 1 first.");
+    setError("");
+    let steps = settings.hints.trim();
+    if (!steps) {
+      steps = await exploreSteps(); // no steps written: AI scans the site and chooses them
+      if (!steps) return;
+    }
+    setWriting(true);
+    const res = await fetch("/api/write-script", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instruction: steps, context: `Screen tutorial of ${settings.tutorialUrl}`, format: "steps" }) }).catch(() => null);
+    const data = await res?.json().catch(() => ({}));
+    setWriting(false);
+    if (!res?.ok) return setError(data?.error ?? "Could not write the narration.");
+    setScript(data.script);
+    await (outMode === "silent" ? startSilent(data.script) : startScript(data.script));
+  };
+  const startScript = async (text = script) => {
+    if (!text.trim()) return;
+    setError("");
+    setUploading(true);
+    resetProject();
+    const res = await fetch("/api/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, voice, rate, pitch, name: projectName.trim() || undefined }) }).catch(() => null);
     const data = await res?.json().catch(() => ({}));
     setUploading(false);
     if (!res?.ok) return setError(data?.error ?? "Could not start Auto-Voice.");
-    const tagged = /^\s*[ab]\s*[:：]/im.test(script);
     setJobId(data.jobId);
     setProjectName(data.name ?? projectName);
     setAudioFile(null);
     setSrtFile(null);
     setAudioUrl(`/api/audio?id=${data.jobId}`);
     setSource("tts");
-    setSettings({ ...settings, verification: "verified", assets: [], ...(tagged ? { dialogue: true } : {}) }); // timings come from the voice itself
+    setSettings({ ...settings, verification: "verified", assets: [], silent: false }); // timings come from the voice itself
     setProjectsRev((n) => n + 1);
     setStatus({ status: "running", steps: SEED_STEPS.map((x) => (x.id === "transcribe" ? { ...x, startedAt: Date.now() } : x)), logs: [], logCount: 0, srt: null, subtitlesSource: "tts", error: null, videoReady: false, versions: [], revisions: [], seo: null, thumbnail: false });
   };
@@ -423,7 +468,7 @@ export default function Studio() {
   const gated = settings.requireVerified && settings.verification === "unchecked";
   const tutorialOk = settings.mode !== "tutorial" || /^https?:\/\/\S+/.test(settings.tutorialUrl);
   const canGenerate = envReady && !!jobId && cues.length > 0 && !running && tutorialOk && !gated;
-  const reason = !envReady ? "Fix the required items in the environment check above first." : !jobId || cues.length === 0 ? "Load a voice file first (Step 1)." : gated ? "Verification is required: run the spot-check or click Skip Check." : !tutorialOk ? "Enter the target URL (https://…)." : "";
+  const reason = !envReady ? "Fix the required items in the environment check above first." : !jobId || cues.length === 0 ? "Add your voice, script or subtitles first (Step 2)." : gated ? "Verification is required: run the spot-check or click Skip Check." : !tutorialOk ? "Enter the target URL (https://…)." : "";
   const currentVersion = versions.find((v) => v.n === selected) ?? versions[versions.length - 1];
 
   const now = useNow(running || uploadPct != null);
@@ -434,16 +479,14 @@ export default function Studio() {
   const videoSrc = jobId && latest ? `/api/video?id=${jobId}&v=${latest.n}&k=${videoKey}` : null;
   const previewRev = status?.previewRev ?? 0;
   const liveNode = settings.livePreview && jobId && previewRev > 0 ? <LivePreview jobId={jobId} rev={previewRev} /> : undefined;
-  const dialogueOn = settings.dialogue && settings.character !== "none";
   const showMonitorMobile = !!liveNode || running || uploadPct != null || !!videoSrc || logs.length > 0;
 
   const STEPS = [
-    { n: 1, label: "Voice & Subtitles", icon: AudioLines, done: cues.length > 0 },
-    { n: 2, label: "Video Mode", icon: Clapperboard, done: false },
-    { n: 3, label: "Character & Aspect", icon: UserRound, done: false },
-    { n: 4, label: "Captions & Branding", icon: Captions, done: false },
-    { n: 5, label: "Render", icon: Rocket, done: versions.length > 0 },
-    { n: 6, label: "Preview & Export", icon: MonitorPlay, done: versions.length > 0 },
+    { n: 1, label: "Video Type & Size", icon: Clapperboard, done: false },
+    { n: 2, label: "Script & Voice", icon: AudioLines, done: cues.length > 0 },
+    { n: 3, label: "Look & Sound", icon: Captions, done: false },
+    { n: 4, label: "Make Video", icon: Rocket, done: versions.length > 0 },
+    { n: 5, label: "Watch & Download", icon: MonitorPlay, done: versions.length > 0 },
   ];
 
   return (
@@ -529,7 +572,7 @@ export default function Studio() {
               <div className="rise rounded-2xl border border-line bg-gradient-to-br from-panel to-raised p-6 shadow-card">
                 <p className="text-xs font-semibold uppercase tracking-widest text-accent-strong">Bengali AI video studio</p>
                 <h1 className="mt-1 text-2xl font-bold sm:text-3xl">নতুন ভিডিও তৈরি করুন</h1>
-                <p className="mt-2 max-w-2xl text-sm text-muted">Upload a Bengali voiceover. Whisper (or your own .srt) provides subtitles, Claude Code plans the video, Remotion renders the MP4. Everything runs on this machine.</p>
+                <p className="mt-2 max-w-2xl text-sm text-muted">Choose the video type, add your words or steps, pick the look, then make the video. Everything runs on this computer.</p>
               </div>
 
               <details className="rounded-xl border border-line bg-panel p-4 shadow-card lg:hidden">
@@ -551,12 +594,93 @@ export default function Studio() {
                 </div>
               )}
 
-      <Section n={1} icon={<AudioLines className="size-5" />} title="Voice & Subtitles" hint=".mp3 · .wav · .m4a  +  optional .srt">
-        <div role="tablist" aria-label="Voice source" className="mb-4 inline-flex rounded-xl border border-line bg-ink p-1">
+      <Section n={1} icon={<Clapperboard className="size-5" />} title="Video Type & Size" hint="Start here: what kind of video, and for which screen">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {MODES.map((m) => (
+            <button type="button" key={m.id} aria-pressed={settings.mode === m.id} onClick={() => patch({ mode: m.id })} className={card(settings.mode === m.id)}>
+              <div className="flex items-start gap-3">
+                <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${settings.mode === m.id ? "bg-accent text-accent-ink" : "bg-raised text-muted ring-1 ring-line"}`}>{MODE_ICON[m.id]}</span>
+                <div className="min-w-0">
+                  <div className="font-semibold">{m.title}</div>
+                  <p className="mt-0.5 text-sm text-muted">{m.desc}</p>
+                </div>
+                {settings.mode === m.id && <Check className="ml-auto size-5 shrink-0 text-accent-strong" strokeWidth={3} />}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {settings.mode === "tutorial" && (
+          <div className="mt-4 grid gap-3 rounded-xl border border-line bg-raised p-4 sm:grid-cols-2">
+            <label className="text-sm sm:col-span-2">
+              <span className="mb-1 block font-semibold">Target App URL</span>
+              <input type="url" required placeholder="https://example.com" value={settings.tutorialUrl} onChange={(e) => patch({ tutorialUrl: e.target.value })} className={field} />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-semibold">Login Email (optional)</span>
+              <input type="email" autoComplete="off" value={settings.tutorialEmail} onChange={(e) => patch({ tutorialEmail: e.target.value })} className={field} />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block font-semibold">Login Password (optional)</span>
+              <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={field} />
+            </label>
+            <div className="sm:col-span-2">
+              <Toggle label="Auto-fix screen recording" desc="If a button is not found on the page, the recorder tries other ways to find it and fixes it automatically." checked={settings.selfHeal} onChange={(v) => patch({ selfHeal: v })} />
+            </div>
+            <p className="text-xs text-muted sm:col-span-2">Credentials stay on this machine: the password is passed to the local browser as an environment variable, never saved in the project, never written to disk and never sent to Claude.</p>
+          </div>
+        )}
+
+
+        <div className="mt-6 border-t border-line pt-5">
+          <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold">Screen size</span>
+          <Segmented
+            label="Screen size"
+            value={settings.aspect}
+            onChange={(v) => patch({ aspect: v })}
+            options={[
+              { id: "16:9", label: (<><Tv className="size-4" /> 16:9 YouTube</>) },
+              { id: "9:16", label: (<><Smartphone className="size-4" /> 9:16 Reels / Shorts</>) },
+            ]}
+          />
+        </div>
+        </div>
+      </Section>
+
+      <Section n={2} icon={<AudioLines className="size-5" />} title="Script & Voice" hint="Your words: write them, or upload a voice">
+        {settings.mode === "tutorial" && (
+          <div className="mb-6 rounded-xl border border-accent/40 bg-accent/5 p-4">
+            <h3 className="text-sm font-bold">Tutorial steps</h3>
+            <p className="mb-3 mt-1 text-xs text-muted">Leave this empty and AI will scan your website, choose the steps and make the whole tutorial. Or write your own steps (one per line), or press “Suggest steps” to let AI propose them for you to edit first.</p>
+            <textarea rows={6} value={settings.hints} onChange={(e) => patch({ hints: e.target.value })} maxLength={2000} disabled={busyWords} aria-label="Tutorial steps" placeholder={STEPS_PLACEHOLDER} className={field} />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Segmented
+                label="Tutorial sound"
+                value={outMode}
+                onChange={setOutMode}
+                options={[
+                  { id: "voice", label: (<><Mic className="size-4" /> AI voice</>) },
+                  { id: "silent", label: (<><Captions className="size-4" /> Silent + soft music</>) },
+                ]}
+              />
+              <button type="button" className={btn} disabled={busyWords || !URL_OK.test(settings.tutorialUrl)} onClick={() => void exploreSteps()}>
+                <Globe className="size-4" /> {exploring ? "Scanning the site…" : "Suggest steps"}
+              </button>
+              <button type="button" className={btnPrimary} disabled={busyWords || !URL_OK.test(settings.tutorialUrl)} onClick={() => void createFromSteps()}>
+                <WandSparkles className="size-4" /> {exploring ? "Scanning the site…" : writing ? "Writing narration…" : uploading ? "Creating…" : "Create tutorial"}
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-muted">AI reads the page titles and button names of the pages it scans (also after login). Your password is never saved or sent to AI.</p>
+            {!URL_OK.test(settings.tutorialUrl) && <p className="mt-2 text-xs text-accent">Add the website URL in Step 1 first.</p>}
+            <p className="mt-4 border-t border-line pt-3 text-xs font-semibold text-muted">Or use your own words instead:</p>
+          </div>
+        )}
+
+        <div role="tablist" aria-label="Where your words come from" className="mb-4 inline-flex rounded-xl border border-line bg-ink p-1">
           {([
-            ["upload", "Upload voice", Mic],
-            ["script", "Write / paste script (Auto-Voice)", PenLine],
-            ["templates", "My Templates", LayoutTemplate],
+            ["script", "Write or paste script", PenLine],
+            ["upload", "I have a voice file", Mic],
           ] as const).map(([id, label, Icon]) => (
             <button key={id} type="button" role="tab" aria-selected={voiceTab === id} onClick={() => setVoiceTab(id)} disabled={running} className={`inline-flex items-center gap-2 rounded-lg px-3.5 py-1.5 text-sm font-semibold transition disabled:opacity-60 ${voiceTab === id ? "bg-panel text-accent-strong shadow-sm ring-1 ring-line" : "text-muted hover:text-fg"}`}>
               <Icon className="size-4" /> {label}
@@ -564,7 +688,7 @@ export default function Studio() {
           ))}
         </div>
 
-        {settings.template && voiceTab !== "templates" && (
+        {settings.template && (
           <p className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-accent/40 bg-accent/10 px-3 py-2 text-sm">
             <LayoutTemplate className="size-4 text-accent-strong" /> Template <b lang="bn">{activeTemplate?.name ?? settings.template}</b> will give this video its structure.
             <button type="button" className="ml-auto text-xs font-semibold underline" onClick={() => applyTemplate(null)}>Clear</button>
@@ -602,7 +726,7 @@ export default function Studio() {
         </div>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <Toggle label="Enhance Voice Audio" desc="Local FFmpeg polish before render: highpass 80 Hz, lowpass 12 kHz, noise reduction, loudness leveling. OFF uses your audio untouched." checked={settings.enhanceVoice} onChange={(v) => patch({ enhanceVoice: v })} />
+          <Toggle label="Clean up voice" desc="Removes noise and evens out the volume. OFF = your original audio." checked={settings.enhanceVoice} onChange={(v) => patch({ enhanceVoice: v })} />
           <label className="text-sm">
             <span className="mb-1 block font-semibold">Project name (optional)</span>
             <input lang="bn" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Defaults to the audio file name" className={field} />
@@ -618,28 +742,40 @@ export default function Studio() {
         </div>
 
           </>
-        ) : voiceTab === "templates" ? (
-          <TemplatesTab selectedId={settings.template} onUse={applyTemplate} refreshKey={templatesRev} onGoTo={setVoiceTab} disabled={running} onList={setTemplates} />
         ) : (
           <div role="tabpanel" className="space-y-4">
+            <Segmented
+              label="Sound"
+              value={outMode}
+              onChange={setOutMode}
+              options={[
+                { id: "voice", label: (<><Mic className="size-4" /> AI voice</>) },
+                { id: "silent", label: (<><Captions className="size-4" /> Silent: subtitles + soft music</>) },
+              ]}
+            />
+            <div className="rounded-xl border border-line bg-raised p-4">
+              <label className="block text-sm">
+                <span className="mb-1 block font-semibold">No script yet? Describe the video and AI will write it</span>
+                <textarea lang="bn" rows={3} value={brief} maxLength={3000} onChange={(e) => setBrief(e.target.value)} disabled={running || writing} placeholder={'e.g. "A 1-minute video explaining what a VPN is, for beginners" (Bengali or English)'} className={field} />
+              </label>
+              <button type="button" className={`${btn} mt-2`} disabled={!brief.trim() || running || writing} onClick={() => void writeScript()}>
+                <WandSparkles className="size-4" /> {writing ? "Writing…" : "Write script with AI"}
+              </button>
+              <span className="ml-3 text-xs text-muted">The script appears below. Edit it, then continue.</span>
+            </div>
             <label className="block text-sm">
-              <span className="mb-1 block font-semibold">Bengali script</span>
-              <textarea lang="bn" rows={9} value={script} maxLength={30000} onChange={(e) => setScript(e.target.value)} disabled={running} placeholder={"আপনার স্ক্রিপ্ট এখানে লিখুন বা পেস্ট করুন…\n\nদুইজনের কথোপকথনের জন্য লাইন শুরু করুন  A:  বা  B:  দিয়ে।"} className={`${field} text-base leading-relaxed`} />
+              <span className="mb-1 block font-semibold">{outMode === "silent" ? "Subtitle lines (one line = one subtitle)" : "Bengali script"}</span>
+              <textarea lang="bn" rows={9} value={script} maxLength={30000} onChange={(e) => setScript(e.target.value)} disabled={running} placeholder={"আপনার স্ক্রিপ্ট এখানে লিখুন বা পেস্ট করুন…"} className={`${field} text-base leading-relaxed`} />
               <span className="mt-1 flex justify-between text-xs text-muted">
-                <span>Tips: <b>A:</b> / <b>B:</b> lines = two voices. <b>[দৃশ্য ১: ...]</b> in brackets = a scene direction (not spoken; it plans the visuals).</span>
+                <span>{outMode === "silent" ? "Each line stays about 1 s + 0.45 s per word; fix timing after creating. " : ""}Tips: <b>[দৃশ্য ১: ...]</b> in brackets = a scene direction (not shown or spoken; it plans the visuals).</span>
                 <span className="tabular">{script.length.toLocaleString()} / 30,000</span>
               </span>
             </label>
+            {outMode === "voice" && (
             <div className="grid gap-3 sm:grid-cols-3">
               <label className="text-sm">
-                <span className="mb-1 block font-semibold">Voice (A)</span>
+                <span className="mb-1 block font-semibold">Voice</span>
                 <select value={voice} onChange={(e) => setVoice(e.target.value)} className={field}>
-                  {VOICE_OPTIONS}
-                </select>
-              </label>
-              <label className="text-sm">
-                <span className="mb-1 block font-semibold">Voice (B lines)</span>
-                <select value={voiceB} onChange={(e) => setVoiceB(e.target.value)} className={field}>
                   {VOICE_OPTIONS}
                 </select>
               </label>
@@ -652,17 +788,18 @@ export default function Studio() {
                 <input type="range" min={-30} max={30} step={2} value={pitch} onChange={(e) => setPitch(Number(e.target.value))} className="mt-2 w-full accent-[var(--color-accent)]" aria-label="Voice pitch" />
               </label>
             </div>
+            )}
             <label className="block text-sm">
               <span className="mb-1 block font-semibold">Project name (optional)</span>
               <input lang="bn" value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Defaults to the first words of the script" className={field} />
             </label>
             <div className="flex flex-wrap items-center gap-3">
-              <button type="button" className={btnPrimary} disabled={!script.trim() || running || uploading} onClick={() => void startScript()}>
-                <Mic className="size-4" /> {uploading ? "Starting…" : "Generate voice + subtitles"}
+              <button type="button" className={btnPrimary} disabled={!script.trim() || running || uploading} onClick={() => void (outMode === "silent" ? startSilent() : startScript())}>
+                <Mic className="size-4" /> {uploading ? "Starting…" : outMode === "silent" ? "Create silent video project" : "Generate voice + subtitles"}
               </button>
               {transcribing && <span className="text-sm text-muted">Synthesizing the voice… (see the live monitor)</span>}
             </div>
-            <p className="text-xs text-muted">Uses the free Microsoft neural Bengali voices through the open-source <code className="font-mono">edge-tts</code> package: no API key, no account. It needs an internet connection only for this step; subtitles come from the voice&apos;s own timings, so they match the audio exactly.</p>
+            {outMode === "voice" && <p className="text-xs text-muted">Uses the free Microsoft neural Bengali voices through the open-source <code className="font-mono">edge-tts</code> package: no API key, no account. It needs an internet connection only for this step; subtitles come from the voice&apos;s own timings, so they match the audio exactly.</p>}
           </div>
         )}
 
@@ -681,163 +818,23 @@ export default function Studio() {
             onRegenerate={() => void regenerateWhisper()}
             disabled={running}
             source={source}
-            dialogue={dialogueOn}
           />
         )}
-      </Section>
 
-      <Section n={2} icon={<Clapperboard className="size-5" />} title="Video Mode" hint="Each mode loads its skill from .claude/skills/">
-        <div className="grid gap-3 sm:grid-cols-2">
-          {MODES.map((m) => (
-            <button type="button" key={m.id} aria-pressed={settings.mode === m.id} onClick={() => patch({ mode: m.id })} className={card(settings.mode === m.id)}>
-              <div className="flex items-start gap-3">
-                <span className={`grid size-10 shrink-0 place-items-center rounded-xl ${settings.mode === m.id ? "bg-accent text-accent-ink" : "bg-raised text-muted ring-1 ring-line"}`}>{MODE_ICON[m.id]}</span>
-                <div className="min-w-0">
-                  <div className="font-semibold">{m.title}</div>
-                  <p className="mt-0.5 text-sm text-muted">{m.desc}</p>
-                  <code className="mt-1.5 inline-block rounded bg-ink px-1.5 py-0.5 font-mono text-[10px] text-muted">{m.skill}</code>
-                </div>
-                {settings.mode === m.id && <Check className="ml-auto size-5 shrink-0 text-accent-strong" strokeWidth={3} />}
-              </div>
-            </button>
-          ))}
-        </div>
-
-        {settings.mode === "tutorial" && (
-          <div className="mt-4 grid gap-3 rounded-xl border border-line bg-raised p-4 sm:grid-cols-2">
-            <label className="text-sm sm:col-span-2">
-              <span className="mb-1 block font-semibold">Target App URL</span>
-              <input type="url" required placeholder="https://example.com" value={settings.tutorialUrl} onChange={(e) => patch({ tutorialUrl: e.target.value })} className={field} />
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block font-semibold">Login Email (optional)</span>
-              <input type="email" autoComplete="off" value={settings.tutorialEmail} onChange={(e) => patch({ tutorialEmail: e.target.value })} className={field} />
-            </label>
-            <label className="text-sm">
-              <span className="mb-1 block font-semibold">Login Password (optional)</span>
-              <input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} className={field} />
-            </label>
-            <div className="sm:col-span-2">
-              <Toggle label="Self-healing recorder" desc="If a button or field is not found, try smart fallbacks (role, label, text, fuzzy match). Failed actions are captured with a page snapshot and Claude patches the selectors once before re-recording, so the tutorial never crashes mid-way." checked={settings.selfHeal} onChange={(v) => patch({ selfHeal: v })} />
-            </div>
-            <p className="text-xs text-muted sm:col-span-2">Credentials stay on this machine: the password is passed to the local browser as an environment variable, never saved in the project, never written to disk and never sent to Claude.</p>
-          </div>
-        )}
-
+        {settings.mode !== "tutorial" && (
         <label className="mt-4 block text-sm">
-          <span className="mb-1 block font-semibold">{settings.mode === "tutorial" ? "Action hints (optional)" : "Creative notes (optional)"}</span>
-          <textarea rows={2} value={settings.hints} onChange={(e) => patch({ hints: e.target.value })} placeholder={settings.mode === "tutorial" ? 'e.g. "Click Sign up at 0:05, then scroll to Pricing at 0:12"' : 'e.g. "Village setting, warm colours" or "Use a bar chart for the three numbers"'} className={field} />
+          <span className="mb-1 block font-semibold">Instructions for the video (optional)</span>
+          <textarea rows={2} value={settings.hints} onChange={(e) => patch({ hints: e.target.value })} placeholder='e.g. "Village setting, warm colours", "Use a bar chart for the three numbers", "Make it fast and energetic"' className={field} />
         </label>
-
-        <div className="mt-4">
-          <StyleCloner jobId={jobId} running={running} selectedId={settings.styleDna} onSelect={selectStyle} onStarted={() => { cloneStarted.current = true; setStatus((st) => st && { ...st, status: "running", error: null }); }} refreshKey={styleRefresh} templateActive={!!settings.template} />
-        </div>
-
-        <div className="mt-4">
-          <MediaPanel jobId={jobId} assets={settings.assets} notes={settings.mediaNotes} onAssets={(assets) => patch({ assets })} onNotes={(mediaNotes) => patch({ mediaNotes })} disabled={running} />
-        </div>
+        )}
       </Section>
 
-      <Section n={3} icon={<UserRound className="size-5" />} title="Character & Aspect Ratio">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {CHARACTERS.map((c) => (
-            <button type="button" key={c.id} aria-pressed={settings.character === c.id} onClick={() => patch({ character: c.id })} className={`${card(settings.character === c.id)} flex flex-col items-center !p-3 text-center`}>
-              <div className="grid h-28 place-items-center">
-                {c.id === "none" ? (
-                  <span className="text-4xl text-muted" aria-hidden>∅</span>
-                ) : c.id === "auto" ? (
-                  <span className="text-4xl text-accent" aria-hidden>✦</span>
-                ) : (
-                  <Character look={CHARACTER_STYLES[c.id]} size={112} expression="happy" />
-                )}
-              </div>
-              <span className="mt-1 text-sm font-semibold">{c.title}</span>
-              <span className="text-xs text-muted">{c.desc}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-5">
-          <div className="mb-2 flex items-center gap-2">
-            <h3 className="text-sm font-semibold">My characters</h3>
-            <span className="rounded-full bg-ink px-2 py-0.5 text-[11px] text-muted">{library.length} saved</span>
-            <button type="button" className={`${btn} ml-auto`} onClick={() => setBuilder({ open: true, editing: null })}><Plus className="size-4" /> Create character</button>
-          </div>
-          {library.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-line px-4 py-5 text-center text-sm text-muted">Mix hair, skin tone, glasses and outfits (Panjabi, suit, hoodie, saree) and save your own SVG characters for future videos.</p>
-          ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-              {library.map((c) => {
-                const on = settings.character === "custom" && settings.customCharacter === c.id;
-                return (
-                  <div key={c.id} className="relative">
-                    <button type="button" aria-pressed={on} onClick={() => patch({ character: "custom", customCharacter: c.id })} className={`${card(on)} flex w-full flex-col items-center !p-3 text-center`}>
-                      <div className="grid h-28 place-items-center"><Character look={c.look} size={112} expression="happy" /></div>
-                      <span lang="bn" className="mt-1 max-w-full truncate text-sm font-semibold">{c.name}</span>
-                    </button>
-                    <div className="absolute right-1.5 top-1.5 flex gap-1">
-                      <button type="button" aria-label={`Edit ${c.name}`} onClick={() => setBuilder({ open: true, editing: c })} className="grid size-7 place-items-center rounded-md border border-line bg-panel/90 text-muted hover:text-fg"><Pencil className="size-3.5" /></button>
-                      <button type="button" aria-label={`Delete ${c.name}`} onClick={() => void removeCharacter(c)} className="grid size-7 place-items-center rounded-md border border-line bg-panel/90 text-muted hover:text-red-600"><Trash2 className="size-3.5" /></button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        <div className="mt-5 rounded-xl border border-line bg-raised/50 p-4">
-          <Toggle
-            label="Dialogue Mode (2 speakers)"
-            desc="Two characters share the screen. Tag each subtitle line Speaker A or B in Step 1 (or auto-alternate); the spotlight and lip-sync follow whoever is speaking."
-            checked={settings.dialogue}
-            onChange={(v) => patch({ dialogue: v })}
-          />
-          {settings.dialogue && (
-            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 pl-14 text-sm">
-              {settings.character === "none" && <span className="text-amber-700">Pick a character above: Dialogue Mode needs characters on screen.</span>}
-              <span className="font-semibold">Speaker A</span>
-              <span className="rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-semibold text-accent-strong">{settings.character === "custom" ? (library.find((c) => c.id === settings.customCharacter)?.name ?? "custom") : settings.character}</span>
-              <label className="flex items-center gap-2">
-                <span className="font-semibold">Speaker B</span>
-                <select
-                  aria-label="Speaker B character"
-                  className={`${field} !w-auto !py-1`}
-                  value={settings.characterB === "custom" ? `custom:${settings.customCharacterB}` : settings.characterB}
-                  onChange={(e) => (e.target.value.startsWith("custom:") ? patch({ characterB: "custom", customCharacterB: e.target.value.slice(7) }) : patch({ characterB: e.target.value as StudioSettings["characterB"] }))}
-                >
-                  <option value="tech-mentor">Tech Mentor</option>
-                  <option value="storyteller">Storyteller</option>
-                  <option value="friendly-teacher">Friendly Teacher</option>
-                  {library.map((c) => (
-                    <option key={c.id} value={`custom:${c.id}`}>{c.name} (custom)</option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          )}
-        </div>
-
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <span className="text-sm font-semibold">Aspect ratio</span>
-          <Segmented
-            label="Aspect ratio"
-            value={settings.aspect}
-            onChange={(v) => patch({ aspect: v })}
-            options={[
-              { id: "16:9", label: (<><Tv className="size-4" /> 16:9 YouTube</>) },
-              { id: "9:16", label: (<><Smartphone className="size-4" /> 9:16 Reels / Shorts</>) },
-            ]}
-          />
-        </div>
-      </Section>
-
-      <Section n={4} icon={<Captions className="size-5" />} title="Captions, Audio & Branding" hint="All optional">
+      <Section n={3} icon={<Captions className="size-5" />} title="Look & Sound" hint="Subtitles, music, logo, pictures: all optional">
         <div className="grid gap-6 lg:grid-cols-2">
           <CaptionsPanel settings={settings} patch={patch} />
 
           <div className="space-y-3">
-            <h3 className="text-sm font-semibold">Background music &amp; effects</h3>
+            <h3 className="text-sm font-semibold">Music &amp; sound effects</h3>
             <div className="flex flex-wrap items-center gap-3">
               <label className="flex items-center gap-2 text-sm">
                 Music
@@ -854,51 +851,54 @@ export default function Studio() {
               </label>
             </div>
             <p className="text-xs text-muted">Music is synthesized locally and automatically ducks under the voiceover.</p>
-            <Toggle label="UI & Transition SFX" desc="Soft whooshes on scene changes, pops on clicks, a chime at the outro." checked={settings.sfx} onChange={(v) => patch({ sfx: v })} />
+            <Toggle label="Sound effects" desc="Small whoosh on scene change, pop on click, chime at the end." checked={settings.sfx} onChange={(v) => patch({ sfx: v })} />
           </div>
         </div>
 
         <div className="mt-6 space-y-3">
           <BrandKitDrawer onChange={setBrand} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <Toggle label="Show Corner Logo Watermark" desc="Top-right logo (or channel name) from the Brand Kit." checked={settings.showLogo} onChange={(v) => patch({ showLogo: v })} />
-            <Toggle label="Add Animated Subscribe/Follow Outro" desc="Adds a 4-second branded outro after the voiceover." checked={settings.outro} onChange={(v) => patch({ outro: v })} />
+            <Toggle label="Show logo in corner" desc="Top-right logo (or channel name) from Logo & Brand." checked={settings.showLogo} onChange={(v) => patch({ showLogo: v })} />
+            <Toggle label="Add end screen (Subscribe)" desc="Adds a 4-second branded outro after the voiceover." checked={settings.outro} onChange={(v) => patch({ outro: v })} />
           </div>
           {(settings.showLogo || settings.outro) && brand && !brand.hasLogo && !brand.channelName && <p className="text-xs text-accent">Open the Brand Kit and add a channel name or logo, otherwise these overlays have nothing to show.</p>}
         </div>
+
+
+        <details className="mt-6 rounded-xl border border-line bg-raised/50 p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Start from a saved template (optional)</summary>
+          <div className="mt-4">
+            <TemplatesTab selectedId={settings.template} onUse={applyTemplate} refreshKey={templatesRev} onGoTo={(t) => { setVoiceTab(t); document.getElementById("step-2")?.scrollIntoView({ behavior: "smooth" }); }} disabled={running} onList={setTemplates} />
+          </div>
+        </details>
+
+        <div className="mt-6 space-y-4 border-t border-line pt-5">
+          <h3 className="text-sm font-semibold">Pictures &amp; style (optional)</h3>
+          <Toggle label="Add real photos automatically" desc="Public-domain / CC0 photos from Wikimedia Commons (free, no key) for scenes about real places and things. Off = pure vector graphics." checked={settings.autoBroll} onChange={(v) => patch({ autoBroll: v })} />
+
+          <div>
+          <MediaPanel jobId={jobId} assets={settings.assets} notes={settings.mediaNotes} onAssets={(assets) => patch({ assets })} onNotes={(mediaNotes) => patch({ mediaNotes })} disabled={running} />
+          </div>
+          <div>
+          <StyleCloner jobId={jobId} running={running} selectedId={settings.styleDna} onSelect={selectStyle} onStarted={() => { cloneStarted.current = true; setStatus((st) => st && { ...st, status: "running", error: null }); }} refreshKey={styleRefresh} templateActive={!!settings.template} />
+          </div>
+        </div>
       </Section>
 
-      <Section n={5} icon={<Rocket className="size-5" />} title="Render" hint="Progress shows in the live monitor">
-        <div className="mb-4 grid gap-4 rounded-xl border border-line bg-raised/50 p-4 sm:grid-cols-2">
-          <Toggle label="Instant live preview (in-browser)" desc="Play and scrub the scene plan in the monitor as soon as it exists, without waiting for the MP4." checked={settings.livePreview} onChange={(v) => patch({ livePreview: v })} />
-          <Toggle label="Long-to-Shorts clipper (9:16)" desc="After a video exists, cut vertical Shorts from it: AI-picked or manual timestamps." checked={settings.shorts} onChange={(v) => patch({ shorts: v })} />
-          <Toggle label="Auto-fetch real photos / B-roll" desc="Public-domain / CC0 photos from Wikimedia Commons (free, no key) for scenes about real places and things. Off = pure vector graphics." checked={settings.autoBroll} onChange={(v) => patch({ autoBroll: v })} />
-        </div>
-
-        <div className="mb-4 grid gap-4 sm:grid-cols-2">
-          <Toggle label="Generate Auto-Thumbnail (thumbnail.png)" desc="Main visual + bold Bengali headline. Runs after Final HD renders; for a draft use “Generate now” in Step 6." checked={settings.thumbnail} onChange={(v) => patch({ thumbnail: v })} />
-          <Toggle label="Generate YouTube/Social Metadata & Chapters" desc="Bengali/English titles, description, hashtags and 00:00 chapters from your SRT. Runs after Final HD renders; for a draft use “Generate now” in Step 6." checked={settings.metadata} onChange={(v) => patch({ metadata: v })} />
-        </div>
-
-        <div className="mb-4 grid gap-4 rounded-xl border border-line bg-raised p-4 sm:grid-cols-2">
-          <Toggle
-            label="Token Saver Mode (Haiku/Sonnet Hybrid)"
-            desc={settings.tokenSaver ? "Light tasks (metadata, chapters, single-scene edits) run on Haiku; scene planning on Sonnet. Saves your Claude Code usage." : "Max Quality Mode: every task runs on your Claude Code default model."}
-            checked={settings.tokenSaver}
-            onChange={(v) => patch({ tokenSaver: v })}
-          />
-          <Toggle
-            label="Custom one-off TSX visual"
-            desc={settings.engine === "custom" ? "Claude writes bespoke React code for this video. Uses many times more tokens and is slower." : "OFF (recommended): Claude only writes a compact scene-plan.json; the pre-built component library renders it."}
-            checked={settings.engine === "custom"}
-            onChange={(v) => patch({ engine: v ? "custom" : "json" })}
-          />
-          <Toggle label="Chunked rendering for long videos" desc="Videos over 3 minutes render in 90-second chunks (one Remotion run each) and are stitched with ffmpeg, so long YouTube videos do not run out of RAM or lose everything on a crash." checked={settings.chunkedRender} onChange={(v) => patch({ chunkedRender: v })} />
+      <Section n={4} icon={<Rocket className="size-5" />} title="Make Video" hint="Progress shows in the live monitor">
+        <div className="mb-4 rounded-xl border border-line bg-raised/50 p-4">
+          <h3 className="mb-3 text-sm font-semibold">Also create</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+          <Toggle label="Make thumbnail" desc="Main visual + bold Bengali headline. Runs after Final HD renders; for a draft use “Generate now” in Step 5." checked={settings.thumbnail} onChange={(v) => patch({ thumbnail: v })} />
+          <Toggle label="Make YouTube title, description & chapters" desc="Bengali/English titles, description, hashtags and chapters made from your subtitles. Runs after Final HD videos; for a draft use “Generate now” in Step 5." checked={settings.metadata} onChange={(v) => patch({ metadata: v })} />
+          <Toggle label="Make Shorts from this video" desc="After a video exists, cut vertical Shorts from it: AI-picked or manual timestamps." checked={settings.shorts} onChange={(v) => patch({ shorts: v })} />
+          <Toggle label="Quick preview before making video" desc="Play and scrub the scene plan in the monitor as soon as it exists, without waiting for the MP4." checked={settings.livePreview} onChange={(v) => patch({ livePreview: v })} />
+          </div>
         </div>
 
         {versions.length > 0 && (
           <div className="mb-4">
-            <Toggle label="Reuse the current design (no AI, just re-render)" desc={`Re-renders v${currentVersion?.n} with the latest subtitles and toggles at the quality you pick. Off = Claude designs a brand-new video.`} checked={reuse} onChange={setReuse} />
+            <Toggle label="Re-make only (no AI)" desc={`Re-renders v${currentVersion?.n} with the latest subtitles and toggles at the quality you pick. Off = AI designs a brand-new video.`} checked={reuse} onChange={setReuse} />
           </div>
         )}
 
@@ -912,15 +912,15 @@ export default function Studio() {
         <div className="flex flex-wrap gap-3">
           <button type="button" onClick={() => void render("draft")} disabled={!canGenerate} className={`${btn} !border-accent !px-5 !py-2.5 !text-accent-strong`}>
             <Zap className="size-4" />
-            {running && !transcribing ? "Working…" : "Fast Draft (480p / 15fps)"}
+            {running && !transcribing ? "Working…" : "Quick Draft (480p, fast)"}
           </button>
           <button type="button" onClick={() => void render("final")} disabled={!canGenerate} className={btnPrimary}>
             <Rocket className="size-4" />
-            Final HD Render (1080p / 30fps)
+            Final HD Video (1080p)
           </button>
         </div>
         {!canGenerate && !running && reason && <p className="mt-2 text-sm text-muted">{reason}</p>}
-        <p className="mt-2 text-xs text-muted">Draft renders in a fraction of the time to check timing, animations and browser actions. When it looks right, tick “Reuse the current design” and render Final HD.</p>
+        <p className="mt-2 text-xs text-muted">Draft renders in a fraction of the time to check timing, animations and browser actions. When it looks right, turn on “Re-make only (no AI)” and make the Final HD video.</p>
 
         {running && (
           <div className="mt-5 rounded-xl border border-accent/30 bg-accent/[0.06] p-4">
@@ -932,16 +932,29 @@ export default function Studio() {
             <p className="mt-2 truncate text-xs text-muted">{activeStep?.detail ?? "Working…"} <a href="#live" className="font-semibold text-accent-strong xl:hidden">Open live monitor</a></p>
           </div>
         )}
+
+        <details className="mt-5 rounded-xl border border-line bg-raised/50 p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Advanced options (cost &amp; long videos)</summary>
+        <div className="mt-4 grid gap-4 rounded-xl border border-line bg-raised p-4 sm:grid-cols-2">
+          <Toggle
+            label="Save AI usage (cheaper)"
+            desc={settings.tokenSaver ? "Light tasks (metadata, chapters, single-scene edits) run on Haiku; scene planning on Sonnet. Saves your Claude Code usage." : "Max Quality Mode: every task runs on your Claude Code default model."}
+            checked={settings.tokenSaver}
+            onChange={(v) => patch({ tokenSaver: v })}
+          />
+          <Toggle label="Split long videos while making" desc="Videos over 3 minutes are made in 90-second parts and joined, so long videos do not run out of memory or lose progress." checked={settings.chunkedRender} onChange={(v) => patch({ chunkedRender: v })} />
+        </div>
+        </details>
       </Section>
 
-      <Section n={6} icon={<MonitorPlay className="size-5" />} title="Preview, Revise & Download">
+      <Section n={5} icon={<MonitorPlay className="size-5" />} title="Watch, Edit & Download">
         {versions.length > 0 && jobId ? (
           <>
             <Player jobId={jobId} versions={versions} selected={selected} onSelect={setSelected} revisions={status?.revisions ?? []} portrait={settings.aspect === "9:16"} busy={running} onRevise={(f, q) => void revise(f, q)} videoKey={videoKey} />
             <div className="mt-6 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-raised/50 p-4">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 text-sm font-bold"><LayoutTemplate className="size-4 text-accent-strong" /> Save as reusable template</div>
-                <p className="text-xs text-muted">Keeps this video&apos;s structure (scene pacing, look, character, camera, subtitle design, music, brand) without its audio, subtitles or text. Reuse it from Step 1, My Templates.</p>
+                <p className="text-xs text-muted">Keeps this video&apos;s structure (scene pacing, look, camera, subtitle design, music, brand) without its audio, subtitles or text. Reuse it from Step 3, Start from a saved template.</p>
                 {tplMsg && <p role="status" className="mt-1 text-xs font-semibold text-accent-strong">{tplMsg}</p>}
               </div>
               <input value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Template name, e.g. Tech Explainer" aria-label="Template name" maxLength={50} lang="bn" className={`${field} !w-56`} />
@@ -951,7 +964,7 @@ export default function Studio() {
             <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-raised/50 p-4">
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-bold">Thumbnail &amp; YouTube pack</div>
-                <p className="text-xs text-muted">{status?.seo || status?.thumbnail ? "Ready below. Generate again to refresh it from the selected version." : `Not generated yet. It runs automatically after Final HD renders when switched on in Step 5; draft renders skip it. Build it now from v${currentVersion?.n}.`}</p>
+                <p className="text-xs text-muted">{status?.seo || status?.thumbnail ? "Ready below. Generate again to refresh it from the selected version." : `Not generated yet. It runs automatically after Final HD renders when switched on in Step 4; draft renders skip it. Build it now from v${currentVersion?.n}.`}</p>
               </div>
               <button type="button" className={btnPrimary} disabled={running || !canGenerate} onClick={() => void post({ action: "extras", quality: "draft", baseVersion: selected || undefined })}>
                 <Sparkles className="size-4" /> {status?.seo || status?.thumbnail ? "Regenerate" : "Generate now"}
@@ -989,17 +1002,6 @@ export default function Studio() {
           </div>
         </main>
       </div>
-      {builder.open && (
-        <CharacterBuilder
-          initial={builder.editing}
-          onClose={() => setBuilder({ open: false, editing: null })}
-          onSaved={(c) => {
-            setBuilder({ open: false, editing: null });
-            void loadLibrary();
-            patch({ character: "custom", customCharacter: c.id });
-          }}
-        />
-      )}
     </div>
   );
 }

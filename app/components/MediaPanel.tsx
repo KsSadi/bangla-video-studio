@@ -42,11 +42,11 @@ export function MediaPanel({ jobId, assets, notes, onAssets, onNotes, disabled }
   };
 
   return (
-    <Collapsible title="Extra Media / B-Roll Assets (Optional)" badge={assets.length ? `${assets.length} file${assets.length > 1 ? "s" : ""}` : "off"}>
+    <Collapsible title="Your own images & videos (optional)" badge={assets.length ? `${assets.length} file${assets.length > 1 ? "s" : ""}` : "off"}>
       <p className="mb-3 text-xs text-muted">
         Add screenshots, images or short clips and say when to show them (for example <em>“Show screenshot1.png at 0:25”</em>). Claude embeds each one in an animated frame at that moment. With no files, this step is skipped.
       </p>
-      {!jobId && <p className="mb-3 text-sm text-accent">Load a voice file first (Step 1); assets are stored inside the project.</p>}
+      {!jobId && <p className="mb-3 text-sm text-accent">Add your voice, script or subtitles first (Step 2); assets are stored inside the project.</p>}
       <input ref={input} type="file" multiple accept="image/*,.mp4,.webm,.mov" className="sr-only" id="asset-input" disabled={!jobId || disabled || busy} onChange={(e) => void upload(e.target.files)} />
       <label htmlFor="asset-input" className={`${btn} inline-block cursor-pointer ${!jobId || disabled ? "pointer-events-none opacity-40" : ""}`}>{busy ? "Uploading…" : "+ Add images / clips"}</label>
       {err && <p role="alert" className="mt-2 text-sm text-red-700">{err}</p>}

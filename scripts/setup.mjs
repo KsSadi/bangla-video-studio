@@ -61,6 +61,15 @@ if (has("python --version")) {
       missing++;
     }
   } else console.log("ok   faster-whisper");
+  if (!has('python -c "import edge_tts"')) {
+    console.log("...  installing edge-tts (pip)");
+    try {
+      execSync("python -m pip install edge-tts", { cwd: root, stdio: "inherit" });
+    } catch {
+      console.log("MISS edge-tts -> run: python -m pip install edge-tts");
+      missing++;
+    }
+  } else console.log("ok   edge-tts");
 }
 
 console.log("...  installing Playwright Chromium (skips if present)");

@@ -26,12 +26,12 @@ export function useNow(active: boolean, ms = 500) {
 }
 
 const IDLE_STEPS: StepView[] = [
-  { id: "transcribe", label: "Generating Bengali SRT", state: "pending" },
-  { id: "prepare", label: "Preparing Audio & Assets", state: "pending" },
-  { id: "plan", label: "Planning Scenes", state: "pending" },
-  { id: "record", label: "Recording Browser", state: "pending" },
-  { id: "render", label: "Rendering MP4", state: "pending" },
-  { id: "extras", label: "Thumbnail & YouTube Pack", state: "pending" },
+  { id: "transcribe", label: "Creating subtitles", state: "pending" },
+  { id: "prepare", label: "Preparing audio & files", state: "pending" },
+  { id: "plan", label: "Planning scenes", state: "pending" },
+  { id: "record", label: "Recording screen", state: "pending" },
+  { id: "render", label: "Making video", state: "pending" },
+  { id: "extras", label: "Thumbnail & YouTube text", state: "pending" },
 ];
 
 const WEIGHT: Record<string, number> = { transcribe: 20, prepare: 5, plan: 25, record: 15, render: 35, extras: 5 };

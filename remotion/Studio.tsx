@@ -1,13 +1,12 @@
 /**
  * "Main" composition = the generated video plus studio-owned layers. Every layer is optional and driven by
  * VideoProps flags (absent/off = not rendered): captions, corner logo, BGM (auto-ducked), SFX, subscribe outro.
- * The video itself is the JSON scene engine (props.plan = scene-plan.json) or, as a fallback, custom generated/Video.tsx.
+ * The video itself is the JSON scene engine (props.plan = scene-plan.json).
  */
 import React from "react";
 import { AbsoluteFill, Easing, Img, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Audio } from "@remotion/media";
 import { SceneEngine } from "./engine/SceneEngine";
-import { GeneratedVideo } from "./generated/Video";
 import { KineticSubtitles } from "./library";
 import { BENGALI_FONT_STACK, useTime } from "./lib/kit";
 import { sfxPlan, speaking } from "./sfx-plan";
@@ -15,7 +14,7 @@ import { SFX_FILES, totalSeconds, type BrandProps, type Cue, type SafeZone, type
 
 const CLAMP = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 
-const Bgm: React.FC<{ src: string; volume: number; cues: Cue[]; total: number }> = ({ src, volume, cues, total }) => {
+const Bgm: React.FC<{ src: string; volume: number; cues: Cue[]; total: number; silent?: boolean }> = ({ src, volume, cues, total, silent }) => {
   const { fps } = useVideoConfig();
   return (
     <Audio
@@ -23,7 +22,7 @@ const Bgm: React.FC<{ src: string; volume: number; cues: Cue[]; total: number }>
       loop
       volume={(f) => {
         const t = f / fps;
-        const duck = 1 - 0.7 * speaking(cues, t);
+        const duck = silent ? 1 : 1 - 0.7 * speaking(cues, t); // silent video: music is the only sound, never duck
         const fade = interpolate(t, [0, 1.2, total - 1.5, total], [0, 1, 1, 0], CLAMP);
         return volume * duck * fade;
       }}
@@ -118,7 +117,7 @@ export const Studio: React.FC<VideoProps> = (props) => {
   return (
     <AbsoluteFill style={{ background: "#000" }}>
       <Sequence durationInFrames={voiceFrames} name="Generated video">
-        {props.plan ? <SceneEngine {...props} plan={props.plan} /> : <GeneratedVideo {...props} />}
+        {props.plan ? <SceneEngine {...props} plan={props.plan} /> : null}
         {props.captionStyle && props.captionStyle !== "none" ? <KineticSubtitles cues={props.cues} mode={props.captionStyle} accent={props.plan?.accent ?? brand?.primary} accent2={brand?.secondary} safe={props.safeZone} opts={props.captionOpts} /> : null}
         {brand?.showLogo ? <Watermark brand={brand} safe={props.safeZone} /> : null}
         {props.hookTitle && props.safeZone ? <HookTitle text={props.hookTitle} accent={props.plan?.accent ?? brand?.primary ?? "#FBBF24"} safe={props.safeZone} /> : null}
@@ -128,7 +127,7 @@ export const Studio: React.FC<VideoProps> = (props) => {
           <Outro brand={brand} />
         </Sequence>
       ) : null}
-      {props.bgmSrc ? <Bgm src={props.bgmSrc} volume={props.bgmVolume ?? 0.2} cues={props.cues} total={total} /> : null}
+      {props.bgmSrc ? <Bgm src={props.bgmSrc} volume={props.bgmVolume ?? 0.2} cues={props.cues} total={total} silent={props.silent} /> : null}
       {plan.map((s, i) => (
         <Sequence key={i} from={Math.round(s.at * fps)} durationInFrames={Math.round(1.6 * fps)} name={`sfx ${s.name}`}>
           <Audio src={staticFile(SFX_FILES[s.name])} volume={s.volume} />

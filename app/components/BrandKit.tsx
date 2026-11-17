@@ -40,7 +40,7 @@ export function BrandKitDrawer({ onChange }: { onChange?: (b: Brand) => void }) 
   };
 
   return (
-    <Collapsible title="Brand Kit" badge={brand.channelName || (brand.hasLogo ? "logo set" : "empty")}>
+    <Collapsible title="Logo & Brand" badge={brand.channelName || (brand.hasLogo ? "logo set" : "empty")}>
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm sm:col-span-2">
           <span className="mb-1 block font-semibold">Channel name</span>

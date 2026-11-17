@@ -2,18 +2,15 @@
  * Studio settings shared by the browser UI and the API routes. Pure (no Node imports).
  * Every optional feature has an independent flag here; the backend skips a step when its flag is off.
  */
-import type { CharacterId } from "@/remotion/lib/types";
-
-export type Mode = "cartoon" | "motion" | "tutorial" | "auto";
+/** "general": the AI picks the style from the script + instructions. "tutorial": records a real website/app screen. */
+export type Mode = "general" | "tutorial";
 export type { CaptionStyle } from "@/remotion/lib/types";
 import type { CaptionStyle } from "@/remotion/lib/types";
 export type BgmId = "none" | "soft-storytelling" | "tech-explainer";
 export type Quality = "draft" | "final";
 export type Verification = "unchecked" | "verified" | "skipped";
 
-export const MODES: Mode[] = ["cartoon", "motion", "tutorial", "auto"];
-export const CHARACTERS: CharacterId[] = ["tech-mentor", "storyteller", "friendly-teacher", "auto", "none", "custom"];
-export const SPEAKER_B_CHARACTERS = ["tech-mentor", "storyteller", "friendly-teacher", "custom"] as const;
+export const MODES: Mode[] = ["general", "tutorial"];
 /** Subtitle themes the user can pick (OFF is the master switch `captionsOn`, not a style). */
 export const CAPTION_STYLES: Exclude<CaptionStyle, "none">[] = ["kinetic", "pill", "glow", "classic"];
 export const CAPTION_POSITIONS = ["bottom", "center"] as const;
@@ -31,13 +28,14 @@ export type AssetItem = { file: string; kind: "image" | "video"; instruction: st
 
 export type StudioSettings = {
   mode: Mode;
-  character: CharacterId;
   aspect: "16:9" | "9:16";
   hints: string;
   tutorialUrl: string; // the login password is never part of settings: it is never saved
   tutorialEmail: string;
   // 1-3 voice & subtitles
   enhanceVoice: boolean;
+  /** Silent video: no voice, subtitle text over soft music (the audio track is silence). */
+  silent: boolean;
   requireVerified: boolean;
   verification: Verification;
   // 4 media
@@ -57,9 +55,7 @@ export type StudioSettings = {
   // 9 extras
   thumbnail: boolean;
   metadata: boolean;
-  // engine + tokens
-  /** "json": Claude writes a compact scene-plan.json rendered by the pre-built library (default, cheapest, most reliable). "custom": Claude writes one-off TSX. */
-  engine: "json" | "custom";
+  // tokens
   /** Token Saver (Haiku/Sonnet hybrid) vs Max Quality (your default model for everything). */
   tokenSaver: boolean;
   // pro-creator features (each independently switchable)
@@ -67,12 +63,6 @@ export type StudioSettings = {
   livePreview: boolean;
   /** Show the Long-to-Shorts (9:16) clipper after a video exists. */
   shorts: boolean;
-  /** Two-speaker Dialogue Mode: two characters, spotlight + lip-sync follow the active speaker. */
-  dialogue: boolean;
-  characterB: (typeof SPEAKER_B_CHARACTERS)[number];
-  /** Character Builder library ids, used when character / characterB is "custom". */
-  customCharacter: string;
-  customCharacterB: string;
   /** Fetch public-domain/CC0 photos from Wikimedia Commons for scenes that benefit from real-world visuals. */
   autoBroll: boolean;
   // reliability
@@ -88,13 +78,13 @@ export type StudioSettings = {
 };
 
 export const DEFAULT_SETTINGS: StudioSettings = {
-  mode: "auto",
-  character: "tech-mentor",
+  mode: "general",
   aspect: "16:9",
   hints: "",
   tutorialUrl: "",
   tutorialEmail: "",
   enhanceVoice: false,
+  silent: false,
   requireVerified: false,
   verification: "unchecked",
   assets: [],
@@ -110,14 +100,9 @@ export const DEFAULT_SETTINGS: StudioSettings = {
   outro: false,
   thumbnail: false,
   metadata: false,
-  engine: "json",
   tokenSaver: true,
   livePreview: true,
   shorts: true,
-  dialogue: false,
-  characterB: "friendly-teacher",
-  customCharacter: "",
-  customCharacterB: "",
   autoBroll: false,
   selfHeal: true,
   chunkedRender: true,
@@ -151,12 +136,12 @@ export function sanitizeSettings(raw: unknown, base: StudioSettings = DEFAULT_SE
   const vol = Number(r.bgmVolume);
   return {
     mode: pick(r.mode, MODES, base.mode),
-    character: pick(r.character, CHARACTERS, base.character),
     aspect: r.aspect === "9:16" ? "9:16" : r.aspect === "16:9" ? "16:9" : base.aspect,
     hints: text(r.hints, 2000, base.hints),
     tutorialUrl: text(r.tutorialUrl, 2000, base.tutorialUrl),
     tutorialEmail: text(r.tutorialEmail, 320, base.tutorialEmail),
     enhanceVoice: bool(r.enhanceVoice, base.enhanceVoice),
+    silent: bool(r.silent, base.silent),
     requireVerified: bool(r.requireVerified, base.requireVerified),
     verification: pick(r.verification, ["unchecked", "verified", "skipped"] as const, base.verification),
     assets,
@@ -173,14 +158,9 @@ export function sanitizeSettings(raw: unknown, base: StudioSettings = DEFAULT_SE
     outro: bool(r.outro, base.outro),
     thumbnail: bool(r.thumbnail, base.thumbnail),
     metadata: bool(r.metadata, base.metadata),
-    engine: r.engine === "custom" ? "custom" : r.engine === "json" ? "json" : base.engine,
     tokenSaver: bool(r.tokenSaver, base.tokenSaver),
     livePreview: bool(r.livePreview, base.livePreview),
     shorts: bool(r.shorts, base.shorts),
-    dialogue: bool(r.dialogue, base.dialogue),
-    characterB: pick(r.characterB, SPEAKER_B_CHARACTERS, base.characterB),
-    customCharacter: typeof r.customCharacter === "string" && /^[a-z0-9-]{0,40}$/.test(r.customCharacter) ? r.customCharacter : base.customCharacter,
-    customCharacterB: typeof r.customCharacterB === "string" && /^[a-z0-9-]{0,40}$/.test(r.customCharacterB) ? r.customCharacterB : base.customCharacterB,
     autoBroll: bool(r.autoBroll, base.autoBroll),
     selfHeal: bool(r.selfHeal, base.selfHeal),
     chunkedRender: bool(r.chunkedRender, base.chunkedRender),
@@ -218,13 +198,13 @@ export type ShortClip = {
 };
 
 /**
- * Studio presets save the reusable workflow (mode, character, music, captions, brand toggles, engine, feature switches).
+ * Studio presets save the reusable workflow (mode, music, captions, brand toggles, feature switches).
  * Per-video things (notes, URL, login, media, verification) are deliberately not part of a preset.
  */
 export const PRESET_KEYS = [
-  "mode", "character", "customCharacter", "dialogue", "characterB", "customCharacterB", "aspect",
+  "mode", "aspect",
   "captionsOn", "captions", "captionSize", "captionPosition", "bgm", "bgmVolume", "sfx", "showLogo", "outro", "enhanceVoice",
-  "thumbnail", "metadata", "engine", "tokenSaver", "livePreview", "shorts", "autoBroll", "selfHeal", "chunkedRender", "styleDna",
+  "thumbnail", "metadata", "tokenSaver", "livePreview", "shorts", "autoBroll", "selfHeal", "chunkedRender", "styleDna",
 ] as const satisfies readonly (keyof StudioSettings)[];
 
 export type StudioPreset = { id: string; name: string; settings: Partial<StudioSettings>; createdAt: string };

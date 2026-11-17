@@ -74,7 +74,7 @@ async function refreshWinPath() {
 const first = (s: string) => s.split(/\r?\n/).find((l) => l.trim())?.trim() ?? "";
 const exists = (...p: string[]) => fs.existsSync(path.join(ROOT, ...p));
 
-const REQUIRED_SKILLS = ["browser-tutorial.md", "scene-plan.md", "style-cartoon.md", "style-motion.md", "custom/remotion-core.md", "custom/cartoon-story.md", "custom/motion-graphics.md"];
+const REQUIRED_SKILLS = ["browser-tutorial.md", "scene-plan.md", "style-cartoon.md", "style-motion.md"];
 const FONTS = ["HindSiliguri-Regular.ttf", "HindSiliguri-SemiBold.ttf", "HindSiliguri-Bold.ttf", "NotoSansBengali-Variable.ttf"];
 
 function claudeLoginFileHint(): boolean {

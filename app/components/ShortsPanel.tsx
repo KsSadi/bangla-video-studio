@@ -68,7 +68,7 @@ export function ShortsPanel({ jobId, shorts, setShorts, busy, onStarted }: Props
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-accent to-accent-strong text-accent-ink"><Scissors className="size-4" /></span>
         <div>
-          <h3 className="font-bold leading-tight">Create Vertical Shorts (9:16)</h3>
+          <h3 className="font-bold leading-tight">Create Shorts / Reels</h3>
           <p className="text-xs text-muted">Cut clips from this video: same scene plan, new 9:16 layout with safe-zone captions. Rendered locally.</p>
         </div>
       </div>

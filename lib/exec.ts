@@ -54,7 +54,7 @@ const okModel = (m: string | undefined) => (m && /^[\w.\-\[\]]+$/.test(m) ? m : 
 /**
  * Which model a task runs on.
  *   Token Saver (hybrid): light tasks (metadata, chapters, single-scene JSON edits) -> Haiku, heavy (scene planning,
- *   custom code, Playwright scripts) -> Sonnet.   Max Quality: everything on your CLI default (or CLAUDE_MODEL).
+ *   Playwright scripts) -> Sonnet.   Max Quality: everything on your CLI default (or CLAUDE_MODEL).
  * Override with CLAUDE_MODEL_LIGHT / CLAUDE_MODEL_HEAVY.
  */
 export function modelFor(tier: Tier, tokenSaver: boolean): string | undefined {
@@ -118,7 +118,7 @@ function spawnClaude(job: Job, args: string[], prompt: string, label: string): P
   });
 }
 
-/** Tool-using Claude Code run (reads/writes project files). Only for work that truly needs code: custom TSX and Playwright scripts. */
+/** Tool-using Claude Code run (reads/writes project files). Only for work that truly needs code: Playwright scripts. */
 export async function claude(job: Job, prompt: string, tier: Tier = "heavy") {
   const model = modelFor(tier, job.settings.tokenSaver);
   const args = ["-p", "--allowedTools", "Read,Write,Edit,Glob,Grep", "--permission-mode", "acceptEdits", "--setting-sources", "project,local", "--output-format", "stream-json", "--verbose"];
@@ -168,21 +168,6 @@ export async function claudeJson(job: Job, prompt: string, tier: Tier, modelOver
     }
   }
   throw new Error(`Claude did not return valid JSON: ${lastErr}`);
-}
-
-/** tsc the generated composition; feed errors back to Claude (max 2 rounds) before spending time on a render. */
-export async function typecheckWithRepair(job: Job) {
-  for (let round = 0; ; round++) {
-    const errors = await node(job, path.join("node_modules", "typescript", "bin", "tsc"), ["--noEmit", "-p", "tsconfig.json"], { quiet: true }).then(
-      () => "",
-      (e: Error) => e.message,
-    );
-    const relevant = errors.split("\n").filter((l) => l.includes("remotion/generated") || l.includes("remotion\\generated")).join("\n");
-    if (!relevant) return log(job, "Type check passed.");
-    if (round === 2) throw new Error(`Generated video code still has type errors:\n${relevant.slice(0, 1500)}`);
-    log(job, `Type errors found; asking Claude to fix (round ${round + 1})…`);
-    await claude(job, `remotion/generated/Video.tsx has TypeScript errors. Fix them. Only edit that file; keep the GeneratedVideo export contract.\n\n${relevant.slice(0, 3000)}`);
-  }
 }
 
 /** Extra Remotion CLI flags. Set REMOTION_BROWSER_EXECUTABLE to use an installed Chrome/Chromium (offline setups). */

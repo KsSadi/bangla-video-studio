@@ -1,6 +1,6 @@
 /**
  * Reusable video templates. A template is the STRUCTURAL blueprint of a finished video (scene pacing as ratios of the
- * total length, background / colours / transition / character / camera per scene, which element types each scene has),
+ * total length, background / colours / transition / camera per scene, which element types each scene has),
  * with the old audio, subtitles and all on-screen text stripped out. Applying it to a new voice is mostly deterministic:
  * the ratios are mapped onto the new cue timeline to make a "skeleton" plan, and Claude only fills in the content slots.
  * Pure TS (no React/Node) so it is unit-tested with the rest of the plan logic.
@@ -23,14 +23,12 @@ export type TemplateScene = {
   bg?: PlanScene["bg"];
   colors?: string[];
   transition?: PlanScene["transition"];
-  character?: PlanScene["character"];
   slots: SlotElement[];
   /** Camera emphasis, positions as fractions of the video length. */
   zoom?: { at: number; x: number; y: number; scale: number; hold: number }[];
 };
 
 export type TemplateBlueprint = {
-  character?: ScenePlan["character"];
   accent?: string;
   refDurationSec: number;
   avgSceneSec: number;
@@ -58,11 +56,10 @@ export function blueprintFromPlan(plan: ScenePlan, cues: Cue[], durationSec: num
     if (scene.bg) t.bg = scene.bg;
     if (scene.colors) t.colors = scene.colors;
     if (scene.transition) t.transition = scene.transition;
-    if (scene.character) t.character = scene.character;
     if (scene.zoom?.length) t.zoom = scene.zoom.map((z) => ({ at: r4(z.at / total), x: z.x, y: z.y, scale: z.scale, hold: z.hold }));
     return t;
   });
-  return { ...(plan.character ? { character: plan.character } : {}), ...(plan.accent ? { accent: plan.accent } : {}), refDurationSec: Math.round(durationSec * 10) / 10, avgSceneSec: Math.round((durationSec / Math.max(1, scenes.length)) * 10) / 10, scenes };
+  return { ...(plan.accent ? { accent: plan.accent } : {}), refDurationSec: Math.round(durationSec * 10) / 10, avgSceneSec: Math.round((durationSec / Math.max(1, scenes.length)) * 10) / 10, scenes };
 }
 
 /**
@@ -96,12 +93,11 @@ export function skeletonFromBlueprint(bp: TemplateBlueprint, cues: Cue[], durati
     if (t.bg) scene.bg = t.bg;
     if (t.colors) scene.colors = t.colors;
     if (t.transition) scene.transition = t.transition;
-    if (t.character) scene.character = t.character;
     if (zoom.length) scene.zoom = zoom;
     scenes.push(scene);
   });
   if (!scenes.length) scenes.push({ id: "s1", fromCue: 1, elements: [{ type: "title", text: "…" }] });
-  return { version: 1, ...(bp.character ? { character: bp.character } : {}), ...(bp.accent ? { accent: bp.accent } : {}), scenes };
+  return { version: 1, ...(bp.accent ? { accent: bp.accent } : {}), scenes };
 }
 
 function placeholder(s: SlotElement): PlanElement {
@@ -141,7 +137,7 @@ export function fillPromptBody(plan: ScenePlan, cues: Cue[]): string {
 }
 
 /**
- * Merge model-written content into the skeleton. Structure (cue boundaries, background, colours, transition, character,
+ * Merge model-written content into the skeleton. Structure (cue boundaries, background, colours, transition,
  * zoom) always comes from the skeleton; only `elements` come from the model, validated like any plan. A scene the
  * model skipped (or filled with nothing usable) gets a title from its first cue.
  */

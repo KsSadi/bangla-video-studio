@@ -18,13 +18,13 @@ export type Template = {
   name: string;
   createdAt: string;
   mode: StudioSettings["mode"];
-  /** The workflow settings (character, music, captions, brand toggles...). Audio and subtitles are never stored. */
+  /** The workflow settings (music, captions, brand toggles...). Audio and subtitles are never stored. */
   settings: Partial<StudioSettings>;
   blueprint: TemplateBlueprint;
   styleDna?: StyleDna;
 };
 
-export type TemplateSummary = { id: string; name: string; createdAt: string; mode: string; scenes: number; avgSceneSec: number; refDurationSec: number; colors: string[]; ratios: [number, number][]; character: string; captions: string; bgm: string; style?: string };
+export type TemplateSummary = { id: string; name: string; createdAt: string; mode: string; scenes: number; avgSceneSec: number; refDurationSec: number; colors: string[]; ratios: [number, number][]; captions: string; bgm: string; style?: string };
 
 export const isTemplateId = (v: unknown): v is string => typeof v === "string" && ID_RE.test(v);
 
@@ -57,7 +57,6 @@ export function listTemplates(): TemplateSummary[] {
       refDurationSec: t.blueprint.refDurationSec,
       colors: [...new Set(sc.flatMap((s) => s.colors ?? []))].slice(0, 5),
       ratios: sc.map((s) => [s.from, s.to] as [number, number]),
-      character: String(t.settings.character ?? ""),
       captions: t.settings.captionsOn === false ? "off" : String(t.settings.captions ?? ""),
       bgm: String(t.settings.bgm ?? "none"),
       style: t.styleDna?.name,
@@ -84,7 +83,7 @@ function currentPlan(job: Job): { plan: ScenePlan; durationSec: number } | { err
     const plan = normalizePlan(JSON.parse(fs.readFileSync(f, "utf8")), cues.length);
     if (plan) return { plan, durationSec: Math.max(cues[cues.length - 1].end + 0.5, 1) };
   }
-  return { error: "Templates need a video made with the JSON scene engine (not the custom TSX engine)." };
+  return { error: "Templates need a finished video with a scene plan. Generate a video first." };
 }
 
 /** Save the structural blueprint of a finished project. Same name (case-insensitive) updates that template. */

@@ -48,7 +48,7 @@ export function DictionaryPanel({ cues, setCues, disabled }: { cues: Cue[]; setC
   const addStarter = () => setRules((rs) => cleanRules([...rs, ...STARTER_RULES]));
 
   return (
-    <Collapsible title="Auto-Replace Dictionary" badge={saved ? `${saved} rule${saved === 1 ? "" : "s"}` : "empty"}>
+    <Collapsible title="Word fixer (auto-replace)" badge={saved ? `${saved} rule${saved === 1 ? "" : "s"}` : "empty"}>
       <p className="mb-3 text-xs leading-relaxed text-muted">
         Whisper often spells tech terms and brand names phonetically. Save a rule once (for example <b lang="bn">রিয়্যাক্ট → React</b>) and it is applied automatically to every new Whisper transcript. Latin rules ignore case; Bengali rules also match inside inflected words (<span lang="bn">এপিআইকে → APIকে</span>).
       </p>

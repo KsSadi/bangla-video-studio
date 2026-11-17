@@ -13,7 +13,6 @@ const defaultProps: VideoProps = {
   durationSec: 6.5,
   width: 1920,
   height: 1080,
-  character: "tech-mentor",
   captionStyle: "kinetic",
 };
 

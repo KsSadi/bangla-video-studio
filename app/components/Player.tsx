@@ -84,7 +84,7 @@ export function Player({ jobId, versions, selected, onSelect, revisions, portrai
           }
         }}
       >
-        <h3 className="mb-1 font-semibold">Request Changes / Revise Video</h3>
+        <h3 className="mb-1 font-semibold">Ask for changes</h3>
         <p className="mb-3 text-xs text-muted">Describe the change in Bengali or English. Name the moment (<b>0:15</b>, <b>১৫ সেকেন্ডে</b> or <b>scene 3</b>) and only that scene is sent to Claude, which costs very few tokens. Starts from <b>v{cur.n}</b>; older versions are kept.</p>
         <div className="mb-2 flex flex-wrap gap-1.5">
           {CHIPS.map((c) => (
@@ -98,7 +98,7 @@ export function Player({ jobId, versions, selected, onSelect, revisions, portrai
           <label className="flex items-center gap-2 text-sm">
             Render as
             <select value={quality} onChange={(e) => setQuality(e.target.value as "draft" | "final")} className={`${field} !w-auto`}>
-              <option value="draft">Fast Draft (480p / 15fps)</option>
+              <option value="draft">Quick Draft (480p, fast)</option>
               <option value="final">Final HD (1080p / 30fps)</option>
             </select>
           </label>
@@ -149,7 +149,7 @@ export function SeoPanel({ jobId, seo, thumbnail, rev }: { jobId: string; seo: S
       )}
       {seo && (
         <>
-          <h3 className="font-semibold">YouTube / Social Pack</h3>
+          <h3 className="font-semibold">YouTube title & description</h3>
           {block("Titles (Bengali)", seo.titlesBn.join("\n"))}
           {block("Titles (English)", seo.titlesEn.join("\n"))}
           {block("Description (Bengali)", seo.descriptionBn)}

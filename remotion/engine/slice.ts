@@ -75,7 +75,6 @@ export function sliceShort(plan: ScenePlan, cues: Cue[], durationSec: number, st
       if (zoom.length) next.zoom = zoom;
       else delete next.zoom;
     }
-    if (next.character) next.character = { ...next.character, side: "center" };
     delete next.photo;
     scenes.push(next);
   }

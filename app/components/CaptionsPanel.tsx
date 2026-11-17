@@ -7,10 +7,10 @@ import { Segmented, Toggle, card } from "./ui";
 type Style = (typeof CAPTION_STYLES)[number];
 
 const STYLES: { id: Style; title: string; desc: string }[] = [
-  { id: "kinetic", title: "Viral Word-Pop", desc: "Reels / Shorts style: the spoken word scales up in your accent colour" },
-  { id: "pill", title: "Cinema Pill", desc: "Dark frosted-glass pill with crisp white text" },
-  { id: "glow", title: "Gradient Glow", desc: "Creator style: soft glow, gradient-coloured keyword" },
-  { id: "classic", title: "Minimalist Classic", desc: "Clean bottom-aligned subtitle bar" },
+  { id: "kinetic", title: "Word Pop", desc: "Reels / Shorts style: the spoken word scales up in your accent colour" },
+  { id: "pill", title: "Box", desc: "Dark frosted-glass pill with crisp white text" },
+  { id: "glow", title: "Glow", desc: "Creator style: soft glow, gradient-coloured keyword" },
+  { id: "classic", title: "Simple Bar", desc: "Clean bottom-aligned subtitle bar" },
 ];
 
 const BG = "linear-gradient(135deg,#0B1026,#1E2A78 55%,#7C3AED)";
@@ -55,7 +55,7 @@ export function CaptionsPanel({ settings, patch }: { settings: StudioSettings; p
     <div>
       <div className="mb-3 flex items-center gap-2">
         <CaptionsIcon className="size-4 text-accent-strong" />
-        <h3 className="text-sm font-semibold">Subtitles (Hind Siliguri / Noto Sans Bengali)</h3>
+        <h3 className="text-sm font-semibold">Subtitles</h3>
       </div>
       <Toggle
         label="Show Subtitles"

@@ -5,11 +5,10 @@
  */
 import React from "react";
 import { AbsoluteFill, Easing, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { CHARACTER_STYLES, type CharacterStyle } from "../characters/Character";
 import { BENGALI_FONT_STACK, BrowserRecording, CameraDrift, KineticText, MediaFrame, SPRING, VoiceAudio, useTime } from "../lib/kit";
-import type { Cue, Speaker, VideoProps } from "../lib/types";
-import { DataChart, IconRow, IconSpotlight, SceneBackground, SmartZoomContainer, TalkingCharacter } from "../library";
-import { CHARACTER_IDS, sceneSpans, type Emotion, type PlanElement, type PlanScene, type ScenePlan, type SceneSpan } from "./plan";
+import type { VideoProps } from "../lib/types";
+import { DataChart, IconRow, IconSpotlight, SceneBackground, SmartZoomContainer } from "../library";
+import { sceneSpans, type PlanElement, type PlanScene, type ScenePlan, type SceneSpan } from "./plan";
 
 const CLAMP = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
 const TRANSITION_SEC = 0.45;
@@ -75,57 +74,9 @@ const ElementView: React.FC<{ el: PlanElement; at: number; span: SceneSpan; box:
 };
 
 
-/** Who is speaking at `t` (hold the last speaker through pauses) and when that speaker started. Untagged cues count as A. */
-export function speakerState(cues: Cue[], t: number): { speaker: Speaker; since: number } {
-  let speaker: Speaker = "A";
-  let since = 0;
-  for (const c of cues) {
-    if (c.start > t + 0.05) break;
-    const sp = c.speaker ?? "A";
-    if (sp !== speaker) {
-      speaker = sp;
-      since = c.start;
-    }
-  }
-  return { speaker, since };
-}
-
-type CharSlot = { character: keyof typeof CHARACTER_STYLES; look?: CharacterStyle };
-const BUILTIN = Object.keys(CHARACTER_STYLES) as (keyof typeof CHARACTER_STYLES)[];
-const slotFor = (id: string | null | undefined, look?: CharacterStyle): CharSlot => ({ character: (BUILTIN as string[]).includes(id ?? "") ? (id as CharSlot["character"]) : "storyteller", look: id === "custom" ? look : undefined });
-
-/** Two characters side by side. The speaker is spotlighted and lip-syncs; the listener dims and keeps a closed mouth. */
-const DialogueStage: React.FC<{ props: VideoProps; a: CharSlot; b: CharSlot; emotion?: Emotion; size: number; top: number; pad: number }> = ({ props, a, b, emotion, size, top, pad }) => {
-  const frame = useCurrentFrame();
-  const { width: W, fps } = useVideoConfig();
-  const { speaker, since } = speakerState(props.cues, frame / fps);
-  const sw = spring({ frame: frame - since * fps, fps, config: SPRING.soft });
-  const act = (who: Speaker) => (speaker === who ? sw : 1 - sw);
-  const charW = (size * 2) / 3;
-  const pan = (act("B") - act("A")) * W * 0.012;
-  const slot = (who: Speaker, c: CharSlot, left: number) => {
-    const k = act(who);
-    return (
-      <div key={who}>
-        <div style={{ position: "absolute", left: left - charW * 0.6, top: top - size * 0.12, width: charW * 2.2, height: size * 1.25, opacity: k * 0.9, background: "radial-gradient(ellipse at 50% 62%, rgba(255,255,255,0.28), rgba(255,255,255,0.08) 45%, transparent 68%)" }} />
-        <div style={{ position: "absolute", left, top, transformOrigin: "50% 100%", scale: String(0.9 + 0.13 * k), translate: `0px ${(1 - k) * size * 0.03}px`, filter: `brightness(${0.6 + 0.4 * k}) saturate(${0.65 + 0.35 * k})` }}>
-          <TalkingCharacter character={c.character} look={c.look} emotion={k > 0.5 ? emotion : "explaining"} audioSrc={props.lipsyncSrc} cues={props.cues} size={size} speaking={speaker === who} />
-        </div>
-      </div>
-    );
-  };
-  return (
-    <div style={{ position: "absolute", inset: 0, translate: `${pan}px 0px` }}>
-      {slot("A", a, pad * 0.7)}
-      {slot("B", b, W - charW - pad * 0.7)}
-    </div>
-  );
-};
-
-const SceneView: React.FC<{ span: SceneSpan; props: VideoProps; plan: ScenePlan; accent: string }> = ({ span, props, plan, accent }) => {
+const SceneView: React.FC<{ span: SceneSpan; props: VideoProps; accent: string }> = ({ span, props, accent }) => {
   const t = useTime();
-  const frame = useCurrentFrame();
-  const { width: W, height: H, fps } = useVideoConfig();
+  const { width: W, height: H } = useVideoConfig();
   const { scene, index, start, end } = span;
   const portrait = H > W;
   const isRecording = scene.elements.some((e) => e.type === "recording");
@@ -136,29 +87,15 @@ const SceneView: React.FC<{ span: SceneSpan; props: VideoProps; plan: ScenePlan;
   const enter: React.CSSProperties =
     kind === "slide-left" ? { translate: `${(1 - p) * W}px 0px` } : kind === "slide-up" ? { translate: `0px ${(1 - p) * H}px` } : kind === "zoom" ? { opacity: p, scale: String(1.25 - 0.25 * p) } : kind === "wipe" ? { clipPath: `inset(0 ${(1 - p) * 100}% 0 0)` } : { opacity: p };
 
-  // character(s)
-  const chosen = props.character === "none" ? null : props.character === "custom" ? "custom" : props.character === "auto" ? (plan.character ?? "storyteller") : (CHARACTER_IDS as readonly string[]).includes(props.character) ? props.character : "storyteller";
-  const who = scene.character && chosen ? chosen : null;
-  const dialogue = !!props.dialogue && !!who;
-  const slotA = slotFor(who, props.lookA);
-  const bId = props.characterB === "custom" || props.lookB ? "custom" : (props.characterB ?? (chosen === "friendly-teacher" ? "tech-mentor" : "friendly-teacher"));
-  const slotB = slotFor(bId, props.lookB);
-  const side = scene.character?.side ?? (index % 2 ? "right" : "left");
-  const stacked = portrait || side === "center" || dialogue;
   const safe = props.safeZone;
   const captionsOff = !props.captionStyle || props.captionStyle === "none";
   const captionTop = safe ? H * (1 - safe.bottom - 0.14) : captionsOff ? H * 0.93 : H * 0.8; // bottom ~20% belongs to the studio captions (Shorts: above the platform UI zone)
   const pad = W * 0.06;
-  const charSize = isRecording ? H * (portrait ? 0.22 : 0.3) : dialogue ? H * (portrait ? 0.24 : 0.34) : stacked ? H * (portrait ? 0.3 : 0.36) : H * 0.62;
-  const charW = (charSize * 2) / 3;
-  const charIn = spring({ frame: frame - (start + 0.15) * fps, fps, config: SPRING.soft });
 
   // content box
   let box: Box;
   if (isRecording) box = { x: W * 0.04, y: H * (portrait ? 0.1 : 0.04), w: W * 0.92, h: captionTop - H * 0.06 };
-  else if (!who) box = { x: pad, y: H * 0.08, w: W - pad * 2, h: captionTop - H * 0.12 };
-  else if (stacked) box = { x: pad, y: H * 0.07, w: W - pad * 2, h: captionTop - charSize - H * 0.09 };
-  else box = { x: side === "left" ? pad + charW + W * 0.02 : pad, y: H * 0.08, w: W - pad * 2 - charW - W * 0.02, h: captionTop - H * 0.12 };
+  else box = { x: pad, y: H * 0.08, w: W - pad * 2, h: captionTop - H * 0.12 };
 
   if (safe) {
     const top = H * safe.top + (props.hookTitle ? H * 0.07 : 0);
@@ -167,7 +104,6 @@ const SceneView: React.FC<{ span: SceneSpan; props: VideoProps; plan: ScenePlan;
     box = { x: x0, y: box.y + dy, w: Math.max(W * 0.3, Math.min(box.x + box.w, W * (1 - safe.right)) - x0), h: Math.max(H * 0.1, box.h - dy) };
   }
 
-  const charLeft = isRecording ? W - charW - W * 0.02 : stacked ? (W - charW) / 2 : side === "left" ? pad * 0.7 : W - charW - pad * 0.7;
   const weights = scene.elements.map((e) => (e.type === "title" ? 1 : e.type === "icons" || e.type === "illustration" ? 1.4 : 2));
   const total = weights.reduce((a, b) => a + b, 0) || 1;
   const gap = H * 0.03;
@@ -183,13 +119,6 @@ const SceneView: React.FC<{ span: SceneSpan; props: VideoProps; plan: ScenePlan;
               <ElementView key={i} el={el} at={Math.min(Math.max(start, ("at" in el ? el.at : undefined) ?? start + 0.35 + i * 0.7), Math.max(start, end - 0.5))} span={span} box={box} share={(weights[i] / total) * (usable / box.h)} accent={accent} props={props} solo={scene.elements.length === 1} />
             ))}
           </div>
-          {who && dialogue ? (
-            <DialogueStage props={props} a={slotA} b={slotB} emotion={scene.character?.emotion} size={charSize} top={captionTop - charSize + H * 0.01} pad={pad} />
-          ) : who ? (
-            <div style={{ position: "absolute", left: charLeft, top: captionTop - charSize + H * (isRecording ? 0.16 : 0.01), opacity: Math.min(1, charIn * 1.5), translate: `0px ${(1 - charIn) * H * 0.12}px` }}>
-              <TalkingCharacter character={slotA.character} look={slotA.look} emotion={scene.character?.emotion} audioSrc={props.lipsyncSrc} cues={props.cues} size={charSize} />
-            </div>
-          ) : null}
         </CameraDrift>
       </SmartZoomContainer>
     </AbsoluteFill>
@@ -206,7 +135,7 @@ export const SceneEngine: React.FC<VideoProps & { plan: ScenePlan }> = (props) =
     <AbsoluteFill style={{ background: "#0B1026" }}>
       {props.audioSrc ? <VoiceAudio src={props.audioSrc} /> : null}
       {visible.map((s) => (
-        <SceneView key={s.scene.id} span={s} props={props} plan={props.plan} accent={accent} />
+        <SceneView key={s.scene.id} span={s} props={props} accent={accent} />
       ))}
     </AbsoluteFill>
   );

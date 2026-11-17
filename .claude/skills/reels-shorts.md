@@ -19,7 +19,7 @@ Platform UI (account name, caption, like/share buttons, search bar) covers the e
 ## Layout rules
 
 1. One idea per scene; at most two elements (title + one visual). Large type: titles >= 7% of the width.
-2. The character stands centered above the subtitles; content sits above the character.
+2. Content sits above the subtitles, inside the safe zone.
 3. Captions: kinetic style, max two lines, always inside the safe zone.
 4. Hook title (optional, Bengali, <= 8 words) shows for the first ~3 seconds at the top.
 5. Keep the first scene visually busy within 0.5 s (scroll-stopping), then settle.

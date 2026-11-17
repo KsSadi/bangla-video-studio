@@ -106,7 +106,7 @@ function buildStylePrompt(id: string, m: StyleMeasure) {
     `3. Write ${dir}/style-dna.draft.json containing ONLY this JSON object and nothing else (no other file):`,
     '{ "vibe": "the aesthetic in one short line", "colors": ["#dark","#mid","#glow"], "accent": "#RRGGBB",',
     '  "bgs": ["gradient|particles|grid", ...], "transitions": ["fade|slide-left|slide-up|zoom|wipe", ...], "transitionSpeed": "fast|medium|slow",',
-    '  "textPlacement": "top|center|bottom", "characterSide": "left|right|center|null", "captionStyle": "kinetic|pill|glow|classic", "captionPosition": "bottom|center",',
+    '  "textPlacement": "top|center|bottom", "captionStyle": "kinetic|pill|glow|classic", "captionPosition": "bottom|center",',
     '  "sceneSeconds": <typical seconds per scene>, "zoomStyle": "none|gentle|punchy", "notes": "layout / framing / text-placement hints, max 200 characters" }',
     "Rules: colors and accent must echo the real palette (dark first; on-screen text will be white). Pick transitions that match the cut style you see and the measured pacing. Do not run commands.",
   ].join("\n");

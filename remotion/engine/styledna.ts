@@ -38,7 +38,6 @@ export type StyleDna = {
     transitions: (typeof TRANSITIONS)[number][];
     transitionSpeed: "fast" | "medium" | "slow";
     textPlacement: (typeof PLACEMENTS)[number];
-    characterSide: "left" | "right" | "center" | null;
     captionStyle: (typeof CAPTION_THEMES)[number];
     captionPosition: "bottom" | "center";
     sceneSeconds: number; // target average scene length
@@ -170,7 +169,6 @@ export function dnaFromMeasure(name: string, m: StyleMeasure): StyleDna {
       transitions: fast ? ["zoom", "slide-left", "wipe"] : m.pacing === "medium" ? ["slide-left", "fade", "zoom"] : ["fade", "slide-up"],
       transitionSpeed: m.pacing,
       textPlacement: "center",
-      characterSide: null,
       captionStyle: fast ? "kinetic" : "classic",
       captionPosition: "bottom",
       sceneSeconds: clamp(Math.round(m.avgShotSec * 2 * 10) / 10 || 6, 3, 14),
@@ -197,8 +195,6 @@ export function normalizeDna(raw: unknown, name: string, measured: StyleMeasure)
   if (tr.length) look.transitions = [...new Set(tr)].slice(0, 4);
   look.transitionSpeed = oneOf(r.transitionSpeed, PACING) ?? look.transitionSpeed;
   look.textPlacement = oneOf(r.textPlacement, PLACEMENTS) ?? look.textPlacement;
-  const side = oneOf(r.characterSide, ["left", "right", "center"] as const);
-  look.characterSide = side ?? (r.characterSide === null ? null : look.characterSide);
   look.captionStyle = oneOf(r.captionStyle, CAPTION_THEMES) ?? look.captionStyle;
   look.captionPosition = oneOf(r.captionPosition, ["bottom", "center"] as const) ?? look.captionPosition;
   const secs = Number(r.sceneSeconds);
@@ -261,7 +257,7 @@ export function dnaPromptLines(dna: StyleDna): string[] {
     `STYLE DNA "${dna.name}" (match this reference look; colours/transitions are enforced by the studio, you match pacing and composition):`,
     `- vibe: ${l.vibe}`,
     `- target scene length ~${l.sceneSeconds}s (${dna.measured.pacing} cutting, ${l.transitionSpeed} transitions), zoom: ${l.zoomStyle}`,
-    `- text placement: ${l.textPlacement}${l.characterSide ? `, presenter on the ${l.characterSide}` : ""}`,
+    `- text placement: ${l.textPlacement}`,
     ...(l.notes ? [`- framing notes: ${l.notes}`] : []),
   ];
 }

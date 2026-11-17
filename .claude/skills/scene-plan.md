@@ -2,7 +2,7 @@
 
 You do NOT write code. You write one compact JSON object. The studio's pre-built component library
 (`remotion/library/`) and scene engine (`remotion/engine/SceneEngine.tsx`) render it: animated backgrounds,
-camera drift, spring entrances, scene transitions, real-waveform lip-sync, captions, music and branding are all
+camera drift, spring entrances, scene transitions, captions, music and branding are all
 automatic. The studio inlines this file into the prompt, so you never need to read files or use tools.
 
 <!-- schema -->
@@ -10,7 +10,6 @@ automatic. The studio inlines this file into the prompt, so you never need to re
 
 ```
 { "version": 1,
-  "character": "tech-mentor|storyteller|friendly-teacher",   // only when the prompt says the character is "auto"
   "accent": "#RRGGBB",                                        // optional highlight colour
   "scenes": [ {
     "id": "s1",                       // short unique id
@@ -18,7 +17,6 @@ automatic. The studio inlines this file into the prompt, so you never need to re
     "bg": "gradient|particles|grid",
     "colors": ["#dark", "#mid", "#glow"],            // 2-3 hex colours, dark first (text is white)
     "transition": "fade|slide-left|slide-up|zoom|wipe",   // how this scene enters
-    "character": { "emotion": "happy|explaining|thinking|excited", "side": "left|right|center" },  // omit = no character in this scene
     "elements": [ ...1-2 elements, max 3... ],
     "zoom": [ { "at": 12.5, "x": 0.7, "y": 0.4, "scale": 1.4, "hold": 1.5 } ]   // optional camera emphasis; x,y are 0..1 of the frame
   } ] }
@@ -56,7 +54,5 @@ An unknown name falls back to a generic icon, so prefer common ones.
    neighbouring scenes; do not use the same layout three times in a row.
 3. Time `at` to the cue where the thing is named (cue start + ~0.2 s) when a scene covers several cues.
 4. Palette: 2-3 colour sets for the whole video, changing only when the story turns. Vary `bg` and `transition`
-   (3+ kinds per video). Alternate the character `side`; give some scenes no character so visuals can breathe.
-5. Emotions follow the script: greeting/thanks `happy`, teaching `explaining`, questions/problems `thinking`,
-   good news/numbers/calls to action `excited`.
-6. Use `zoom` sparingly (0-2 per video) to punch in on the thing being named.
+   (3+ kinds per video).
+5. Use `zoom` sparingly (0-2 per video) to punch in on the thing being named.

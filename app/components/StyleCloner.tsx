@@ -77,7 +77,7 @@ export function StyleCloner({ jobId, running, selectedId, onSelect, onStarted, r
   };
 
   return (
-    <Collapsible title="Clone style from reference video" badge={selectedId ? "style active" : styles.length ? `${styles.length} saved` : "off"}>
+    <Collapsible title="Copy style from another video" badge={selectedId ? "style active" : styles.length ? `${styles.length} saved` : "off"}>
       <p className="mb-3 text-xs leading-relaxed text-muted">
         Upload a short reference clip (a video whose look you love). FFmpeg extracts 5 keyframes, the dominant colours and the cutting pace locally; Claude then reads the keyframes and writes a reusable <b>style-dna.json</b> (palette, background vibe, transitions, text placement, caption style, scene length). New videos use that look while keeping your Bengali content.
       </p>
@@ -92,7 +92,7 @@ export function StyleCloner({ jobId, running, selectedId, onSelect, onStarted, r
         <button type="button" className={btnPrimary} disabled={!file || !jobId || running || busy} onClick={() => void analyze()}>
           <ScanSearch className="size-4" /> {busy ? "Uploading…" : "Analyze & save style"}
         </button>
-        {!jobId && <span className="text-xs text-accent-strong">Load a voice file first (Step 1): the analysis runs inside a project.</span>}
+        {!jobId && <span className="text-xs text-accent-strong">Add your voice, script or subtitles first (Step 2): the analysis runs inside a project.</span>}
       </div>
       {err && <p role="alert" className="mt-2 text-sm text-red-700">{err}</p>}
 

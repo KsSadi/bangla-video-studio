@@ -117,18 +117,12 @@ export function startShorts(job: Job, ids: string[], quality: Quality, base: Vid
           const audio = `shorts/short-${clip.n}.mp3`;
           const len = String(cut.durationSec);
           await ffmpeg(job, ["-ss", String(clip.start), "-t", len, "-i", path.join(pub, base.audioSrc), "-c:a", "libmp3lame", "-q:a", "3", path.join(pub, audio)], { quiet: true });
-          let lipsyncSrc: string | undefined;
-          if (base.lipsyncSrc) {
-            lipsyncSrc = `shorts/short-${clip.n}-lipsync.wav`;
-            await ffmpeg(job, ["-ss", String(clip.start), "-t", len, "-i", path.join(pub, base.lipsyncSrc), "-c:a", "pcm_s16le", path.join(pub, lipsyncSrc)], { quiet: true });
-          }
           const props: VideoProps = {
             ...base,
             width: w,
             height: h,
             fps: q.fps,
             audioSrc: audio,
-            lipsyncSrc,
             cues: cut.cues,
             plan: cut.plan,
             durationSec: cut.durationSec,

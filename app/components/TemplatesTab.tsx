@@ -53,7 +53,7 @@ export function TemplatesTab({ selectedId, onUse, refreshKey, onGoTo, disabled, 
   return (
     <div role="tabpanel" className="space-y-4">
       <p className="text-sm text-muted">
-        A template is the <b>structure</b> of a finished video: scene pacing, look, character, camera, subtitle design, music and brand settings (never its audio, subtitles or text). Pick one, add a new Bengali voice, and the new video follows the same proven structure without rebuilding it. Finish a video, then use <b>Save as reusable template</b> in Step 6.
+        A template is the <b>structure</b> of a finished video: scene pacing, look, camera, subtitle design, music and brand settings (never its audio, subtitles or text). Pick one, add a new Bengali voice, and the new video follows the same proven structure without rebuilding it. Finish a video, then use <b>Save as reusable template</b> in Step 6.
       </p>
 
       {active && (
@@ -93,7 +93,6 @@ export function TemplatesTab({ selectedId, onUse, refreshKey, onGoTo, disabled, 
                 <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted">
                   <span className="rounded-full bg-ink px-2 py-0.5">{t.scenes} scenes · ~{t.avgSceneSec}s each</span>
                   <span className="rounded-full bg-ink px-2 py-0.5">{t.mode}</span>
-                  {t.character && <span className="rounded-full bg-ink px-2 py-0.5">{t.character}</span>}
                   <span className="rounded-full bg-ink px-2 py-0.5">captions {t.captions}</span>
                   {t.bgm !== "none" && <span className="rounded-full bg-ink px-2 py-0.5">♪ {t.bgm}</span>}
                   {t.style && <span className="rounded-full bg-ink px-2 py-0.5">style {t.style}</span>}

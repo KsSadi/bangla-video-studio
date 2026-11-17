@@ -1,6 +1,5 @@
 /**
  * Studio kit: battle-tested building blocks every generated video should reuse.
- * Generated code (remotion/generated/Video.tsx) imports from here.
  */
 import React from "react";
 import { loadFont } from "@remotion/fonts";
@@ -18,8 +17,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { CHARACTER_STYLES, Character, type CharacterStyle, type Expression } from "../characters/Character";
-import type { CaptionOpts, CaptionStyle, CharacterId, Cue, RecEvent, SafeZone } from "./types";
+import type { CaptionOpts, CaptionStyle, Cue, RecEvent, SafeZone } from "./types";
 
 // ---------- Bengali fonts (local files, never fetched from the network) ----------
 export const FONT_HEADING = "Hind Siliguri";
@@ -55,18 +53,6 @@ export const fadeInOut = (t: number, start: number, end: number, d = 0.35) => {
 
 /** 0..1 ease-out ramp starting at `start` (seconds). */
 export const enter = (t: number, start: number, d = 0.5) => interpolate(t, [start, start + d], [0, 1], { ...CLAMP, easing: EASE_OUT });
-
-/**
- * Mouth openness 0..1 for lip-sync: flaps at syllable-like rate while a cue is spoken, closed in gaps.
- * ponytail: cue-driven, not audio-amplitude-driven. Upgrade path: @remotion/media-utils visualizeAudio.
- */
-export const mouthOpen = (cues: Cue[], t: number) => {
-  const i = activeCueIndex(cues, t);
-  if (i < 0) return 0;
-  const c = cues[i];
-  const edge = Math.min(1, (t - c.start) / 0.08, (c.end - t) / 0.08);
-  return edge * (0.25 + 0.75 * Math.abs(Math.sin(t * 19) * Math.sin(t * 7.3 + 1)));
-};
 
 /** Bengali-safe splitting. NEVER split Bengali with text.split("") - it breaks conjuncts and vowel signs. */
 export const splitWords = (text: string) => text.trim().split(/\s+/).filter(Boolean);
@@ -455,25 +441,6 @@ export const MediaFrame: React.FC<{
       </div>
     </div>
   );
-};
-
-// ---------- presenter ----------
-/** Pre-built talking character. Lip-syncs to cues, blinks and breathes on its own. Renders nothing for "none". */
-export const Presenter: React.FC<{
-  character: CharacterId;
-  cues: Cue[];
-  size?: number;
-  expression?: Expression;
-  wave?: boolean;
-  /** Custom look, used when character is "auto" (design one that fits the story). */
-  look?: CharacterStyle;
-  style?: React.CSSProperties;
-}> = ({ character, cues, size = 600, expression, wave, look, style }) => {
-  const t = useTime();
-  if (character === "none") return null;
-  const resolved = look ?? CHARACTER_STYLES[character === "auto" || character === "custom" ? "storyteller" : character];
-  const m = mouthOpen(cues, t);
-  return <Character look={resolved} t={t} mouth={m} expression={expression ?? (m > 0 ? "happy" : "neutral")} wave={wave} size={size} style={style} />;
 };
 
 // ---------- browser recording (tutorial mode) ----------
